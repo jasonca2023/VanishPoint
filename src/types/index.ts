@@ -93,6 +93,14 @@ export interface Kpis {
   totalDecided: number;
 }
 
+/** IMAP access for the scout, stored only in the device's secure vault. */
+export interface MailCredentials {
+  /** The address the scout searches — the email the user signed up with. */
+  user: string;
+  /** App password (Gmail etc.); never the VanishPoint account password. */
+  password: string;
+}
+
 export const DEFAULT_SETTINGS: VanishSettings = {
   dormancyThresholdMonths: 18,
   notificationsEnabled: true,

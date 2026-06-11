@@ -1,4 +1,4 @@
-import type { ActivitySignal, DataCategory, GhostAccount } from '@/types';
+import type { ActivitySignal, DataCategory, GhostAccount, MailCredentials } from '@/types';
 
 /**
  * Client for the scout agent (scout/server.py): the service that walks the
@@ -26,31 +26,44 @@ interface ScoutGhost {
   messageCount?: number;
 }
 
+interface ScanPayload {
+  source: 'live' | 'demo';
+  scannedMessages: number;
+  ghosts: ScoutGhost[];
+}
+
+const SCAN_TIMEOUT_MS = 120_000; // big inboxes take a while
+
 export async function fetchScoutScan(
   scoutUrl: string,
   thresholdMonths: number,
-  userEmail: string,
+  creds: MailCredentials | null,
 ): Promise<ScoutScan | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000); // big inboxes take a while
+  const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
   try {
     const base = scoutUrl.replace(/\/$/, '');
-    const res = await fetch(`${base}/scan?threshold_months=${thresholdMonths}`, {
-      signal: controller.signal,
-    });
+    // With a stored credential the scout searches the user's own inbox;
+    // without one it answers from its demo mailbox.
+    const res = creds
+      ? await fetch(`${base}/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...creds, threshold_months: thresholdMonths }),
+          signal: controller.signal,
+        })
+      : await fetch(`${base}/scan?threshold_months=${thresholdMonths}`, {
+          signal: controller.signal,
+        });
     if (!res.ok) return null;
-    const data = (await res.json()) as {
-      source: 'live' | 'demo';
-      scannedMessages: number;
-      ghosts: ScoutGhost[];
-    };
+    const data = (await res.json()) as ScanPayload;
     return {
       source: data.source,
       scannedMessages: data.scannedMessages,
       ghosts: data.ghosts.map(
         (g): GhostAccount => ({
           ...g,
-          email: userEmail,
+          email: creds?.user ?? 'you@example.com',
           status: 'detected',
         }),
       ),
@@ -59,5 +72,23 @@ export async function fetchScoutScan(
     return null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Quick IMAP login check so onboarding can confirm the app password works. */
+export async function verifyMailCredentials(
+  scoutUrl: string,
+  creds: MailCredentials,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${scoutUrl.replace(/\/$/, '')}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(creds),
+    });
+    if (!res.ok) return { ok: false, error: `scout answered ${res.status}` };
+    return (await res.json()) as { ok: boolean; error?: string };
+  } catch {
+    return { ok: false, error: 'Scout agent unreachable — is scout/server.py running?' };
   }
 }

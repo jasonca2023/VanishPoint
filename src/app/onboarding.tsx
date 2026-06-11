@@ -1,39 +1,69 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
 import { Wordmark } from '@/components/wordmark';
-import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
+import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
 import { setupNotifications } from '@/services/notifications';
+import { verifyMailCredentials } from '@/services/scout';
 import { useVaultStore } from '@/store/use-vault-store';
 
-type StepState = 'idle' | 'busy' | 'done';
-
 /**
- * Threshold screen: connect the mail account (mock OAuth 2.0 in this
- * build), grant notification permission, run the first on-device scan.
+ * Threshold screen. The inbox the scout searches is the address the user
+ * created their account with; the app password is verified against the
+ * scout immediately and stored only in the device's secure vault.
  */
 export default function Onboarding() {
-  const [mail, setMail] = useState<StepState>('idle');
-  const [notifs, setNotifs] = useState<StepState>('idle');
-  const [scanning, setScanning] = useState(false);
+  const session = useVaultStore((s) => s.session);
+  const settings = useVaultStore((s) => s.settings);
+  const setMailCreds = useVaultStore((s) => s.setMailCreds);
   const completeOnboarding = useVaultStore((s) => s.completeOnboarding);
   const runScan = useVaultStore((s) => s.runScan);
 
-  const connectMail = async () => {
-    setMail('busy');
-    // Real build: OAuth 2.0 (PKCE) → Gmail/Outlook metadata-only scope.
-    await new Promise((r) => setTimeout(r, 900));
-    setMail('done');
+  const email = session?.user.email ?? '';
+  const [appPassword, setAppPassword] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [skipped, setSkipped] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notifs, setNotifs] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  const connect = async () => {
+    setError(null);
+    setConnecting(true);
+    try {
+      const creds = { user: email, password: appPassword.trim() };
+      const result = await verifyMailCredentials(settings.scoutUrl, creds);
+      if (!result.ok) {
+        setError(
+          result.error?.includes('unreachable')
+            ? result.error
+            : 'That app password didn’t work. Check it and try again.',
+        );
+        return;
+      }
+      await setMailCreds(creds);
+      setConnected(true);
+    } finally {
+      setConnecting(false);
+    }
   };
 
   const enableNotifs = async () => {
-    setNotifs('busy');
     await setupNotifications();
-    setNotifs('done'); // a denied permission still completes the step
+    setNotifs(true); // a denied permission still completes the step
   };
 
   const start = async () => {
@@ -43,41 +73,91 @@ export default function Onboarding() {
     router.replace('/dashboard');
   };
 
+  const inboxReady = connected || skipped;
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Wordmark />
-        <Text style={styles.title}>Two permissions,{'\n'}then the scout works for you.</Text>
+        <Text style={styles.title}>Point the scout{'\n'}at your inbox.</Text>
 
-        <View style={{ gap: Space.md }}>
-          <Step
-            label="01 · mail metadata"
-            title="Connect your inbox"
-            detail="The scout agent reads headers only — sender, subject, date — and classifies each one with an on-device model. Bodies are never read, nothing is uploaded."
-            state={mail}
-            cta="Connect inbox"
-            onPress={connectMail}
-          />
-          <Step
-            label="02 · reminders"
-            title="Allow notifications"
-            detail="One push when a ghost account turns up, with Vanish · Keep · Remind Me Later on the notification itself."
-            state={notifs}
-            cta="Enable notifications"
-            onPress={enableNotifs}
-            disabled={mail !== 'done'}
-          />
+        <View style={styles.step}>
+          <View style={styles.stepHead}>
+            <Text style={labelStyle}>01 · inbox access</Text>
+            {connected && <Feather name="check" size={14} color={Color.accent} />}
+          </View>
+          <Text style={styles.stepDetail}>
+            The scout searches the inbox you signed up with. It reads headers only — sender,
+            subject, date — and classifies them with an on-device model. Bodies are never read.
+          </Text>
+          <Text style={styles.emailLine}>{email}</Text>
+          {!connected ? (
+            <>
+              <TextInput
+                style={styles.input}
+                placeholder="app password"
+                placeholderTextColor={Color.neutral}
+                secureTextEntry
+                autoCapitalize="none"
+                value={appPassword}
+                onChangeText={setAppPassword}
+              />
+              <Pressable
+                onPress={() => Linking.openURL('https://myaccount.google.com/apppasswords')}
+              >
+                <Text style={styles.helpLink}>
+                  Gmail needs a one-time app password — create one here
+                </Text>
+              </Pressable>
+              {error && <Text style={styles.error}>{error}</Text>}
+              <Button
+                label="Connect inbox"
+                onPress={connect}
+                loading={connecting}
+                disabled={!appPassword.trim() || !email}
+              />
+            </>
+          ) : (
+            <Text style={styles.connectedNote}>Inbox verified — the scout is ready.</Text>
+          )}
         </View>
 
-        <View style={{ marginTop: 'auto', gap: Space.lg }}>
+        <View style={[styles.step, !inboxReady && { opacity: 0.45 }]}>
+          <View style={styles.stepHead}>
+            <Text style={labelStyle}>02 · reminders</Text>
+            {notifs && <Feather name="check" size={14} color={Color.accent} />}
+          </View>
+          <Text style={styles.stepDetail}>
+            One push when a ghost account turns up, with Vanish · Keep · Remind Me Later right on
+            the notification.
+          </Text>
+          {!notifs && (
+            <Button
+              label="Enable notifications"
+              variant="secondary"
+              onPress={enableNotifs}
+              disabled={!inboxReady}
+            />
+          )}
+        </View>
+
+        <View style={{ marginTop: 'auto', gap: Space.md }}>
           <Button
             label={scanning ? 'Scanning' : 'Run first scan'}
             onPress={start}
             loading={scanning}
-            disabled={mail !== 'done'}
+            disabled={!inboxReady}
           />
+          {!connected && (
+            <Button
+              label={skipped ? 'Using the demo inbox for now' : 'Skip — try the demo inbox first'}
+              variant="quiet"
+              onPress={() => setSkipped(true)}
+            />
+          )}
           <Text style={styles.fineprint}>
-            The scout suggests; it never deletes. Every vanish needs your fingerprint or face.
+            The app password lives in this phone's Keychain, under your account. The scout
+            suggests; every vanish still needs your face or fingerprint.
           </Text>
         </View>
       </ScrollView>
@@ -85,52 +165,16 @@ export default function Onboarding() {
   );
 }
 
-function Step({
-  label,
-  title,
-  detail,
-  state,
-  cta,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  title: string;
-  detail: string;
-  state: StepState;
-  cta: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <View style={[styles.step, disabled && { opacity: 0.45 }]}>
-      <View style={styles.stepHead}>
-        <Text style={labelStyle}>{label}</Text>
-        {state === 'done' && <Feather name="check" size={14} color={Color.accent} />}
-      </View>
-      <Text style={styles.stepTitle}>{title}</Text>
-      <Text style={styles.stepDetail}>{detail}</Text>
-      {state !== 'done' && (
-        <Pressable
-          onPress={onPress}
-          disabled={disabled || state === 'busy'}
-          style={({ pressed }) => [styles.stepCta, pressed && { backgroundColor: Color.paper3 }]}
-        >
-          <Text style={styles.stepCtaText}>{state === 'busy' ? 'Working…' : cta}</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Color.paper },
   container: {
-    ...contentColumn,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
     flexGrow: 1,
     padding: Space.xl,
     paddingTop: Space.xxl,
-    gap: Space.xxl,
+    gap: Space.xl,
   },
   title: {
     fontFamily: Font.display,
@@ -143,26 +187,33 @@ const styles = StyleSheet.create({
     backgroundColor: Color.paper2,
     borderRadius: Radius.card,
     padding: Space.xl,
-    gap: Space.sm,
+    gap: Space.md,
   },
   stepHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  stepTitle: { fontFamily: Font.display, fontSize: Type.md, color: Color.ink },
   stepDetail: {
     fontFamily: Font.body,
     fontSize: Type.sm,
     lineHeight: Type.sm * 1.5,
     color: Color.ink2,
   },
-  stepCta: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: Color.rule,
-    borderRadius: Radius.pill,
+  emailLine: { fontFamily: Font.mono, fontSize: Type.sm, color: Color.ink },
+  input: {
+    backgroundColor: Color.paper3,
+    borderRadius: Radius.control,
     paddingHorizontal: Space.lg,
-    paddingVertical: Space.sm + 2,
-    marginTop: Space.sm,
+    paddingVertical: 13,
+    fontFamily: Font.body,
+    fontSize: Type.base,
+    color: Color.ink,
   },
-  stepCtaText: { fontFamily: Font.display, fontSize: Type.sm, color: Color.ink },
+  helpLink: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    color: Color.neutral,
+    textDecorationLine: 'underline',
+  },
+  error: { fontFamily: Font.body, fontSize: Type.sm, color: Color.accent },
+  connectedNote: { fontFamily: Font.body, fontSize: Type.sm, color: Color.ink2 },
   fineprint: {
     fontFamily: Font.body,
     fontSize: Type.sm,

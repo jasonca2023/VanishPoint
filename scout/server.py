@@ -205,6 +205,37 @@ def detect(headers: list[dict], labeled: list[tuple[str, float]], threshold_mont
 app = FastAPI(title="VanishPoint Scout")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# Known IMAP hosts by mail domain; gmail is the default.
+IMAP_HOSTS = {
+    "gmail.com": "imap.gmail.com",
+    "googlemail.com": "imap.gmail.com",
+    "outlook.com": "outlook.office365.com",
+    "hotmail.com": "outlook.office365.com",
+    "live.com": "outlook.office365.com",
+    "icloud.com": "imap.mail.me.com",
+    "me.com": "imap.mail.me.com",
+    "yahoo.com": "imap.mail.yahoo.com",
+    "aol.com": "imap.aol.com",
+}
+
+
+def _host_for(user: str, host: str | None) -> str:
+    if host:
+        return host
+    domain = user.rsplit("@", 1)[-1].lower()
+    return IMAP_HOSTS.get(domain, "imap.gmail.com")
+
+
+class MailCredentials(BaseModel):
+    user: str
+    password: str
+    host: str | None = None
+
+
+class ScanRequest(MailCredentials):
+    threshold_months: int = 18
+    limit: int = 5000
+
 
 class ScanResponse(BaseModel):
     source: str
@@ -234,8 +265,32 @@ def health():
     }
 
 
+@app.post("/verify")
+def verify(creds: MailCredentials):
+    """Try an IMAP login so the app can confirm the credential immediately."""
+    try:
+        box = imaplib.IMAP4_SSL(_host_for(creds.user, creds.host))
+        box.login(creds.user, creds.password)
+        box.logout()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
+
+@app.post("/scan", response_model=ScanResponse)
+def scan_live(req: ScanRequest):
+    """Scan the inbox the signed-in user registered with. Credentials arrive
+    per-request from the app's secure vault; the scout stores nothing."""
+    headers = fetch_headers(_host_for(req.user, req.host), req.user, req.password, req.limit)
+    labeled = classify(headers)
+    ghosts = detect(headers, labeled, req.threshold_months)
+    return {"source": "live", "scannedMessages": len(headers), "ghosts": ghosts}
+
+
 @app.get("/scan", response_model=ScanResponse)
 def scan(threshold_months: int = 18, limit: int = 5000):
+    """Credential-less scan: .env if configured (dev convenience), else the
+    bundled sample mailbox."""
     creds = _load_env()
     if creds.get("IMAP_USER") and creds.get("IMAP_PASSWORD"):
         headers = fetch_headers(

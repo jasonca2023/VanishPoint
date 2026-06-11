@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
 import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
+import { verifyMailCredentials } from '@/services/scout';
 import { useVaultStore } from '@/store/use-vault-store';
 
 const THRESHOLDS = [12, 18, 24, 36] as const;
@@ -12,10 +14,72 @@ export default function Settings() {
   const settings = useVaultStore((s) => s.settings);
   const updateSettings = useVaultStore((s) => s.updateSettings);
   const signOut = useVaultStore((s) => s.signOut);
+  const mailCreds = useVaultStore((s) => s.mailCreds);
+  const setMailCreds = useVaultStore((s) => s.setMailCreds);
   const kpis = useVaultStore((s) => s.kpis)();
+  const [appPassword, setAppPassword] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [mailError, setMailError] = useState<string | null>(null);
+
+  const connectInbox = async () => {
+    if (!session?.user.email) return;
+    setMailError(null);
+    setConnecting(true);
+    try {
+      const creds = { user: session.user.email, password: appPassword.trim() };
+      const result = await verifyMailCredentials(settings.scoutUrl, creds);
+      if (!result.ok) {
+        setMailError(result.error ?? 'That app password didn’t work.');
+        return;
+      }
+      await setMailCreds(creds);
+      setAppPassword('');
+    } finally {
+      setConnecting(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+      <View style={styles.panel}>
+        <Text style={labelStyle}>inbox</Text>
+        {mailCreds ? (
+          <>
+            <Text style={styles.email}>{mailCreds.user}</Text>
+            <Text style={styles.hint}>
+              Connected — scans search this inbox. The app password lives only in this device's
+              secure vault.
+            </Text>
+            <Button label="Disconnect inbox" variant="secondary" onPress={() => setMailCreds(null)} />
+          </>
+        ) : (
+          <>
+            <Text style={styles.email}>{session?.user.email ?? '—'}</Text>
+            <Text style={styles.hint}>
+              Not connected — scans use the scout's demo mailbox. Paste an app password to search
+              your real inbox.
+            </Text>
+            <TextInput
+              style={styles.urlInput}
+              placeholder="app password"
+              placeholderTextColor={Color.neutral}
+              secureTextEntry
+              autoCapitalize="none"
+              value={appPassword}
+              onChangeText={setAppPassword}
+            />
+            {mailError && <Text style={styles.mailError}>{mailError}</Text>}
+            <Button
+              label="Connect inbox"
+              variant="secondary"
+              onPress={connectInbox}
+              loading={connecting}
+              disabled={!appPassword.trim()}
+            />
+          </>
+        )}
+      </View>
+
       <View style={styles.panel}>
         <Text style={labelStyle}>scout tuning</Text>
         <Text style={styles.rowLabel}>Treat an account as dormant after</Text>
@@ -202,6 +266,7 @@ const styles = StyleSheet.create({
     fontSize: Type.sm,
     color: Color.ink,
   },
+  mailError: { fontFamily: Font.body, fontSize: Type.sm, color: Color.accent },
   fineprint: {
     fontFamily: Font.body,
     fontSize: Type.sm,

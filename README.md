@@ -97,10 +97,13 @@ uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requi
 .venv/bin/python server.py    # http://localhost:8787
 ```
 
-To scan your **real Gmail**: `cp scout/.env.example scout/.env`, add your address and an
-[app password](https://myaccount.google.com/apppasswords), restart the server. Without
-credentials the agent answers from a bundled sample mailbox. On a phone, point
-Settings → "Scout agent address" at your computer's LAN IP.
+To scan your **real inbox**: the scout searches the email you signed up with. During
+onboarding (or in Settings → inbox) paste a one-time
+[app password](https://myaccount.google.com/apppasswords) — the app verifies it against
+the scout, stores it in the device Keychain under your account, and sends it per-scan;
+the scout itself stores nothing. Skip the step and scans use a bundled sample mailbox.
+On a phone, point Settings → "Scout agent address" at your computer's LAN IP.
+(`scout/.env` still works as a dev-only fallback for credential-less GET scans.)
 
 Notifications and biometrics need a real device or simulator; the web preview stubs them
 so the full flow stays walkable end-to-end.

@@ -6,12 +6,13 @@ import {
   type DecisionEvent,
   type GhostAccount,
   type Kpis,
+  type MailCredentials,
   type VanishSettings,
 } from '@/types';
 import { detectGhostAccounts } from '@/services/discovery';
 import { fetchScoutScan } from '@/services/scout';
 import { supabase } from '@/services/supabase';
-import { loadJson, saveJson } from '@/services/vault';
+import { clearJson, loadJson, saveJson } from '@/services/vault';
 import {
   notifyGhostDetected,
   notifyVanishSent,
@@ -42,12 +43,16 @@ interface VaultState {
   lastScanSource: 'live' | 'demo' | 'offline' | null;
   /** Headers the scout walked on the last scan. */
   lastScanCount: number | null;
+  /** Inbox access for the scout; lives only in the secure vault. */
+  mailCreds: MailCredentials | null;
 
   initAuth: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ error?: string; needsConfirm?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 
+  /** Save (or clear) the inbox credential in the secure vault. */
+  setMailCreds: (creds: MailCredentials | null) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   /** Run the on-device scout and merge newly found ghosts. */
   runScan: (opts?: { notify?: boolean }) => Promise<GhostAccount[]>;
@@ -68,6 +73,7 @@ const EMPTY_VAULT = {
   lastScanAt: null as string | null,
   lastScanSource: null as 'live' | 'demo' | 'offline' | null,
   lastScanCount: null as number | null,
+  mailCreds: null as MailCredentials | null,
 };
 
 export const useVaultStore = create<VaultState>((set, get) => {
@@ -78,11 +84,12 @@ export const useVaultStore = create<VaultState>((set, get) => {
   };
 
   const hydrateVault = async () => {
-    const [accounts, settings, events, onboarded] = await Promise.all([
+    const [accounts, settings, events, onboarded, mailCreds] = await Promise.all([
       loadJson<GhostAccount[]>(key('accounts')),
       loadJson<VanishSettings>(key('settings')),
       loadJson<DecisionEvent[]>(key('events')),
       loadJson<boolean>(key('onboarded')),
+      loadJson<MailCredentials>(key('mail')),
     ]);
     set({
       hydrated: true,
@@ -90,6 +97,7 @@ export const useVaultStore = create<VaultState>((set, get) => {
       settings: { ...DEFAULT_SETTINGS, ...settings },
       events: events ?? [],
       onboarded: onboarded ?? false,
+      mailCreds: mailCreds ?? null,
     });
   };
 
@@ -131,20 +139,30 @@ export const useVaultStore = create<VaultState>((set, get) => {
       await supabase.auth.signOut();
     },
 
+    setMailCreds: async (creds) => {
+      set({ mailCreds: creds });
+      if (creds) {
+        await saveJson(key('mail'), creds);
+      } else {
+        await clearJson(key('mail'));
+      }
+    },
+
     completeOnboarding: async () => {
       set({ onboarded: true });
       await saveJson(key('onboarded'), true);
     },
 
     runScan: async ({ notify = true } = {}) => {
-      const { settings, accounts, session } = get();
+      const { settings, accounts, mailCreds } = get();
 
       // Ask the scout agent (IMAP walk + HF classifier) first; fall back to
-      // the bundled heuristic demo only when the agent is unreachable.
+      // the bundled heuristic demo only when the agent is unreachable. With
+      // a stored credential the scout searches the user's own inbox.
       const scan = await fetchScoutScan(
         settings.scoutUrl,
         settings.dormancyThresholdMonths,
-        session?.user.email ?? 'you@example.com',
+        mailCreds,
       );
       const found = scan?.ghosts ?? detectGhostAccounts(settings.dormancyThresholdMonths);
       const source = scan?.source ?? 'offline';
