@@ -1,9 +1,10 @@
 # VanishPoint Scout
 
-The AI agent behind the app's **Scan** button. It walks a real inbox over IMAP
-(headers only — sender / subject / date), classifies every message with a
-fine-tuned Hugging Face transformer, groups senders by domain, and returns the
-ghost accounts. It runs on your own machine; mail metadata never leaves it.
+The AI agent behind the app's **Scan** button. It walks a real inbox — the
+Gmail API (OAuth, metadata scope) or IMAP — headers only: sender / subject /
+date. Every message is classified with a fine-tuned Hugging Face transformer,
+senders are grouped by domain, and the ghost accounts come back. It runs on
+your own machine; mail metadata never leaves it.
 
 ## The model
 
@@ -29,24 +30,34 @@ signal — a shaky read must not turn a newsletter into a deletable account.
 cd scout
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/python train.py     # fine-tunes and saves to model/ (~2 min)
-.venv/bin/python server.py    # http://localhost:8787
+.venv/bin/python server.py    # http://localhost:8787 (model/ ships pre-trained)
 ```
 
-## Connect your real inbox
+## Inbox access
 
-```bash
-cp .env.example .env
-```
+Three modes, in the order the server picks them per request:
 
-Gmail: turn on 2-Step Verification, create an app password at
-<https://myaccount.google.com/apppasswords>, and put your address + that
-password in `.env`. Restart the server — `/health` should report
-`"inbox": "configured"`. Without credentials the server answers from a
-bundled sample mailbox (`sample_mailbox.py`) so the pipeline stays demoable.
+1. **Gmail API (OAuth)** — the app sends the user's Google access token with
+   each `POST /scan`. The `gmail.metadata` scope can never return message
+   bodies (enforced by Google). Put the OAuth client in `.env`
+   (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) so the scout can refresh
+   expired tokens mid-scan; it's the same client the Supabase Google provider
+   uses.
+2. **IMAP** — for non-Google inboxes the app sends an address + app password
+   per request. `POST /verify` lets the app check a credential up front.
+3. **Demo mailbox** — no credentials at all answers from
+   `sample_mailbox.py`, so the pipeline stays demoable.
+
+The scout stores nothing in any mode.
 
 ## API
 
 - `GET /health` — model + inbox status
-- `GET /scan?threshold_months=18&limit=5000` — walk the inbox, classify,
-  detect; returns `{ source, scannedMessages, ghosts[] }`
+- `GET /scan?threshold_months=18&limit=5000` — credential-less scan (`.env`
+  IMAP inbox if configured, else the demo mailbox)
+- `POST /scan` — per-request credentials: `{ google_access_token,
+  google_refresh_token?, threshold_months }` or `{ user, password,
+  threshold_months }`; returns `{ source, scannedMessages, ghosts[],
+  refreshedAccessToken? }`
+- `POST /verify` — IMAP login check
+- `POST /verify-google` — Gmail token check; returns the inbox address

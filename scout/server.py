@@ -18,8 +18,10 @@ import imaplib
 import os
 import re
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+import requests
 import tldextract
 import torch
 from fastapi import FastAPI
@@ -112,6 +114,97 @@ def fetch_headers(host: str, user: str, password: str, limit: int) -> list[dict]
             box.logout()
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------- gmail api
+
+GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
+# messages.get costs 5 quota units at 250 units/sec/user; cap the walk so a
+# scan stays inside the app's 120 s timeout.
+GMAIL_MAX_MESSAGES = 2000
+
+
+class GmailAuthError(Exception):
+    """Access token rejected — caller may retry once with a refreshed token."""
+
+
+def _gmail_get(token: str, url: str, params: dict | None = None) -> dict:
+    res = requests.get(
+        url, headers={"Authorization": f"Bearer {token}"}, params=params, timeout=30
+    )
+    if res.status_code in (401, 403):
+        raise GmailAuthError(res.text[:200])
+    res.raise_for_status()
+    return res.json()
+
+
+def google_refresh(refresh_token: str) -> str | None:
+    """Trade a refresh token for a fresh access token. Needs the OAuth client
+    in .env — the same client the Supabase Google provider is configured with."""
+    env = _load_env()
+    client_id, client_secret = env.get("GOOGLE_CLIENT_ID"), env.get("GOOGLE_CLIENT_SECRET")
+    if not (client_id and client_secret):
+        return None
+    res = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+        timeout=30,
+    )
+    return res.json().get("access_token") if res.ok else None
+
+
+def gmail_profile(token: str) -> str:
+    """The address the token belongs to — used by /verify-google."""
+    return _gmail_get(token, f"{GMAIL_API}/profile").get("emailAddress", "")
+
+
+def fetch_headers_gmail(token: str, limit: int) -> list[dict]:
+    """Same header triples as the IMAP walk, via the Gmail API metadata scope
+    (gmail.metadata can never return message bodies — enforced by Google)."""
+    ids: list[str] = []
+    page_token = None
+    while len(ids) < limit:
+        params: dict = {"maxResults": min(500, limit - len(ids))}
+        if page_token:
+            params["pageToken"] = page_token
+        data = _gmail_get(token, f"{GMAIL_API}/messages", params)
+        ids.extend(m["id"] for m in data.get("messages", []))
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+
+    def fetch_one(mid: str) -> dict | None:
+        try:
+            msg = _gmail_get(
+                token,
+                f"{GMAIL_API}/messages/{mid}",
+                {"format": "metadata", "metadataHeaders": ["From", "Subject", "Date"]},
+            )
+        except GmailAuthError:
+            raise
+        except Exception:
+            return None
+        fields = {
+            h["name"].lower(): h["value"]
+            for h in msg.get("payload", {}).get("headers", [])
+        }
+        if not fields.get("from") or not msg.get("internalDate"):
+            return None
+        sent = datetime.fromtimestamp(int(msg["internalDate"]) / 1000, tz=timezone.utc)
+        return {
+            "sender": re.sub(r"\s+", " ", fields["from"]),
+            "subject": re.sub(r"\s+", " ", fields.get("subject", "(no subject)")),
+            "date": sent.isoformat(),
+        }
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(fetch_one, ids))
+    return [h for h in results if h]
 
 
 # ---------------------------------------------------------------- detection
@@ -232,7 +325,19 @@ class MailCredentials(BaseModel):
     host: str | None = None
 
 
-class ScanRequest(MailCredentials):
+class GoogleTokens(BaseModel):
+    google_access_token: str
+    google_refresh_token: str | None = None
+
+
+class ScanRequest(BaseModel):
+    # Either an IMAP credential or a Google OAuth token — both arrive
+    # per-request from the app's secure vault; the scout stores nothing.
+    user: str | None = None
+    password: str | None = None
+    host: str | None = None
+    google_access_token: str | None = None
+    google_refresh_token: str | None = None
     threshold_months: int = 18
     limit: int = 5000
 
@@ -241,6 +346,9 @@ class ScanResponse(BaseModel):
     source: str
     scannedMessages: int
     ghosts: list[dict]
+    # Set when an expired Google access token was refreshed mid-scan so the
+    # app can update its vault.
+    refreshedAccessToken: str | None = None
 
 
 def _load_env() -> dict:
@@ -277,14 +385,54 @@ def verify(creds: MailCredentials):
         return {"ok": False, "error": str(exc)[:200]}
 
 
+@app.post("/verify-google")
+def verify_google(tokens: GoogleTokens):
+    """Confirm a Google OAuth token works and report whose inbox it opens."""
+    token = tokens.google_access_token
+    refreshed = None
+    try:
+        try:
+            address = gmail_profile(token)
+        except GmailAuthError:
+            if not tokens.google_refresh_token:
+                raise
+            refreshed = google_refresh(tokens.google_refresh_token)
+            if not refreshed:
+                raise
+            address = gmail_profile(refreshed)
+        return {"ok": True, "email": address, "refreshedAccessToken": refreshed}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
+
 @app.post("/scan", response_model=ScanResponse)
 def scan_live(req: ScanRequest):
     """Scan the inbox the signed-in user registered with. Credentials arrive
     per-request from the app's secure vault; the scout stores nothing."""
-    headers = fetch_headers(_host_for(req.user, req.host), req.user, req.password, req.limit)
+    refreshed = None
+    if req.google_access_token:
+        token = req.google_access_token
+        limit = min(req.limit, GMAIL_MAX_MESSAGES)
+        try:
+            headers = fetch_headers_gmail(token, limit)
+        except GmailAuthError:
+            refreshed = google_refresh(req.google_refresh_token) if req.google_refresh_token else None
+            if not refreshed:
+                raise
+            headers = fetch_headers_gmail(refreshed, limit)
+    elif req.user and req.password:
+        headers = fetch_headers(_host_for(req.user, req.host), req.user, req.password, req.limit)
+    else:
+        headers = SAMPLE_MAILBOX
+    source = "live" if (req.google_access_token or req.user) else "demo"
     labeled = classify(headers)
     ghosts = detect(headers, labeled, req.threshold_months)
-    return {"source": "live", "scannedMessages": len(headers), "ghosts": ghosts}
+    return {
+        "source": source,
+        "scannedMessages": len(headers),
+        "ghosts": ghosts,
+        "refreshedAccessToken": refreshed,
+    }
 
 
 @app.get("/scan", response_model=ScanResponse)

@@ -16,10 +16,25 @@ export default function Settings() {
   const signOut = useVaultStore((s) => s.signOut);
   const mailCreds = useVaultStore((s) => s.mailCreds);
   const setMailCreds = useVaultStore((s) => s.setMailCreds);
+  const googleTokens = useVaultStore((s) => s.googleTokens);
+  const setGoogleTokens = useVaultStore((s) => s.setGoogleTokens);
+  const signInWithGoogle = useVaultStore((s) => s.signInWithGoogle);
   const kpis = useVaultStore((s) => s.kpis)();
   const [appPassword, setAppPassword] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [busyGoogle, setBusyGoogle] = useState(false);
   const [mailError, setMailError] = useState<string | null>(null);
+
+  const connectGoogle = async () => {
+    setMailError(null);
+    setBusyGoogle(true);
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) setMailError(error);
+    } finally {
+      setBusyGoogle(false);
+    }
+  };
 
   const connectInbox = async () => {
     if (!session?.user.email) return;
@@ -43,7 +58,20 @@ export default function Settings() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.panel}>
         <Text style={labelStyle}>inbox</Text>
-        {mailCreds ? (
+        {googleTokens ? (
+          <>
+            <Text style={styles.email}>{session?.user.email ?? '—'}</Text>
+            <Text style={styles.hint}>
+              Google connected — scans read headers through the Gmail API (metadata scope; bodies
+              can't be read). Tokens live only in this device's secure vault.
+            </Text>
+            <Button
+              label="Disconnect Google"
+              variant="secondary"
+              onPress={() => setGoogleTokens(null)}
+            />
+          </>
+        ) : mailCreds ? (
           <>
             <Text style={styles.email}>{mailCreds.user}</Text>
             <Text style={styles.hint}>
@@ -56,9 +84,15 @@ export default function Settings() {
           <>
             <Text style={styles.email}>{session?.user.email ?? '—'}</Text>
             <Text style={styles.hint}>
-              Not connected — scans use the scout's demo mailbox. Paste an app password to search
-              your real inbox.
+              Not connected — scans use the scout's demo mailbox. Connect Google, or paste an
+              IMAP app password for non-Google inboxes.
             </Text>
+            <Button
+              label="Connect Google"
+              variant="secondary"
+              onPress={connectGoogle}
+              loading={busyGoogle}
+            />
             <TextInput
               style={styles.urlInput}
               placeholder="app password"
@@ -69,13 +103,14 @@ export default function Settings() {
               onChangeText={setAppPassword}
             />
             {mailError && <Text style={styles.mailError}>{mailError}</Text>}
-            <Button
-              label="Connect inbox"
-              variant="secondary"
-              onPress={connectInbox}
-              loading={connecting}
-              disabled={!appPassword.trim()}
-            />
+            {appPassword.trim().length > 0 && (
+              <Button
+                label="Connect inbox"
+                variant="secondary"
+                onPress={connectInbox}
+                loading={connecting}
+              />
+            )}
           </>
         )}
       </View>

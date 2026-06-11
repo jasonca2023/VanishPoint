@@ -101,6 +101,13 @@ export interface MailCredentials {
   password: string;
 }
 
+/** Google OAuth tokens (gmail.metadata scope only), captured when the user
+ * signs in with Google and stored only in the device's secure vault. */
+export interface GoogleTokens {
+  accessToken: string;
+  refreshToken?: string;
+}
+
 export const DEFAULT_SETTINGS: VanishSettings = {
   dormancyThresholdMonths: 18,
   notificationsEnabled: true,

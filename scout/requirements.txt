@@ -2,6 +2,7 @@ accelerate==1.1.1
 datasets==5.0.0
 fastapi==0.136.3
 numpy==1.26.4
+requests==2.32.3
 scikit-learn==1.9.0
 tldextract==5.3.1
 torch==2.2.2

@@ -25,8 +25,22 @@ export default function Auth() {
   const [stage, setStage] = useState<'email' | 'sent'>('email');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyGoogle, setBusyGoogle] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestLink = useVaultStore((s) => s.requestLink);
+  const signInWithGoogle = useVaultStore((s) => s.signInWithGoogle);
+
+  const googleSignIn = async () => {
+    setError(null);
+    setBusyGoogle(true);
+    try {
+      // On web this navigates to Google's consent screen and back.
+      const { error: err } = await signInWithGoogle();
+      if (err) setError(err);
+    } finally {
+      setBusyGoogle(false);
+    }
+  };
 
   const sendLink = async () => {
     setError(null);
@@ -70,9 +84,11 @@ export default function Auth() {
             <View style={styles.form}>
               <Text style={labelStyle}>sign in</Text>
               <Text style={styles.formHint}>
-                No password. We email a one-time sign-in link to the inbox the scout will watch —
-                new addresses get an account automatically.
+                No password. Google sign-in also lets the scout read your inbox headers —
+                sender, subject, date, never message bodies.
               </Text>
+              <Button label="Continue with Google" onPress={googleSignIn} loading={busyGoogle} />
+              <Text style={styles.divider}>or get a sign-in link by email</Text>
               <TextInput
                 style={styles.input}
                 placeholder="email"
@@ -85,7 +101,12 @@ export default function Auth() {
                 onSubmitEditing={sendLink}
               />
               {error && <Text style={styles.error}>{error}</Text>}
-              <Button label="Email me a sign-in link" onPress={sendLink} loading={busy} />
+              <Button
+                label="Email me a sign-in link"
+                variant="secondary"
+                onPress={sendLink}
+                loading={busy}
+              />
             </View>
           ) : (
             <View style={styles.form}>
@@ -155,6 +176,13 @@ const styles = StyleSheet.create({
     color: Color.neutral,
   },
   emailLine: { fontFamily: Font.mono, fontSize: Type.sm, color: Color.ink2 },
+  divider: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    color: Color.neutral,
+    textAlign: 'center',
+    paddingVertical: Space.xs,
+  },
   input: {
     backgroundColor: Color.paper2,
     borderRadius: Radius.control,

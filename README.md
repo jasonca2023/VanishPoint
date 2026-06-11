@@ -9,9 +9,10 @@ it never deletes anything without your explicit, biometric-gated confirmation.
 ## Features
 
 ### Accounts
-Sign-in is passwordless: enter your email and **Supabase Auth** sends a one-time sign-in
-link to your inbox — opening it lands you back in the app with a session, and first-time
-addresses get an account automatically. No password to invent, reuse, or leak.
+Sign-in is passwordless, two ways: **Sign in with Google** (which doubles as inbox access
+for the scout — one consent, both jobs), or a one-time sign-in link emailed by
+**Supabase Auth** — opening it lands you back in the app with a session. First-time
+sign-ins get an account automatically; there's no password to invent, reuse, or leak.
 Identity is the only thing that lives in the cloud: each user's ghost list, decisions,
 settings, and mail credential are stored encrypted in the **iOS Keychain / Android
 Keystore**, namespaced per user — a shared phone never leaks one person's ghosts to
@@ -29,12 +30,14 @@ metadata never leaves it. The dashboard always says where a scan came from — l
 the scout's demo mailbox, or offline fallback data.
 
 ### Connecting your inbox
-During onboarding (or later in Settings → inbox) you paste a one-time
-[app password](https://myaccount.google.com/apppasswords) for the address you registered
-with. The app verifies it against the scout with a real IMAP login before accepting it,
-keeps it only in the device vault, and sends it per-scan — the scout stores nothing.
-Gmail, Outlook, iCloud, Yahoo, and AOL hosts are auto-detected from the address. Skip the
-step and scans use a bundled sample mailbox so the whole flow stays demoable.
+The primary path is **Sign in with Google**: the consent screen asks for the Gmail
+`gmail.metadata` scope — sender/subject/date only; Google enforces that the token can
+never return message bodies — and the scout then reads headers through the Gmail API.
+Tokens are kept only in the device vault and sent per-scan; the scout stores nothing and
+refreshes expired tokens on the fly. For non-Google inboxes (Outlook, iCloud, Yahoo, AOL)
+there's an IMAP fallback: paste a one-time app password, verified with a real IMAP login
+before it's accepted. Skip the step and scans use a bundled sample mailbox so the whole
+flow stays demoable.
 
 ### Ask-First reminders
 When a ghost is detected you get a push notification — *"You haven't used your 'vimeo.com'
@@ -128,8 +131,9 @@ Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Current limitations
 
-- The inbox connector is IMAP + app password; OAuth 2.0 (Gmail API metadata scope) is the
-  next milestone.
+- Google OAuth works on the web preview; the native apps still need deep-link handling
+  for the consent round-trip. The Google Cloud consent screen runs in testing mode
+  (add yourself as a test user) until the app goes through Google's verification.
 - Reminders are scheduled locally rather than via a push backend.
 - Encrypted cloud backup (zero-knowledge, passphrase-derived) is on the roadmap — today
   account data deliberately lives only on your devices.

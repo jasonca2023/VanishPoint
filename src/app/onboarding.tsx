@@ -28,6 +28,8 @@ export default function Onboarding() {
   const session = useVaultStore((s) => s.session);
   const settings = useVaultStore((s) => s.settings);
   const setMailCreds = useVaultStore((s) => s.setMailCreds);
+  const googleTokens = useVaultStore((s) => s.googleTokens);
+  const signInWithGoogle = useVaultStore((s) => s.signInWithGoogle);
   const completeOnboarding = useVaultStore((s) => s.completeOnboarding);
   const runScan = useVaultStore((s) => s.runScan);
 
@@ -35,10 +37,24 @@ export default function Onboarding() {
   const [appPassword, setAppPassword] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [busyGoogle, setBusyGoogle] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notifs, setNotifs] = useState(false);
   const [scanning, setScanning] = useState(false);
+
+  const connectGoogle = async () => {
+    setError(null);
+    setBusyGoogle(true);
+    try {
+      // Round-trips through Google's consent screen; tokens land in the
+      // vault when the page returns.
+      const { error: err } = await signInWithGoogle();
+      if (err) setError(err);
+    } finally {
+      setBusyGoogle(false);
+    }
+  };
 
   const connect = async () => {
     setError(null);
@@ -73,7 +89,8 @@ export default function Onboarding() {
     router.replace('/dashboard');
   };
 
-  const inboxReady = connected || skipped;
+  const googleConnected = !!googleTokens;
+  const inboxReady = googleConnected || connected || skipped;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -84,18 +101,35 @@ export default function Onboarding() {
         <View style={styles.step}>
           <View style={styles.stepHead}>
             <Text style={labelStyle}>01 · inbox access</Text>
-            {connected && <Feather name="check" size={14} color={Color.accent} />}
+            {(googleConnected || connected) && (
+              <Feather name="check" size={14} color={Color.accent} />
+            )}
           </View>
           <Text style={styles.stepDetail}>
             The scout searches the inbox you signed up with. It reads headers only — sender,
             subject, date — and classifies them with an on-device model. Bodies are never read.
           </Text>
           <Text style={styles.emailLine}>{email}</Text>
-          {!connected ? (
+          {googleConnected ? (
+            <Text style={styles.connectedNote}>
+              Google connected — the scout reads headers through the Gmail API.
+            </Text>
+          ) : connected ? (
+            <Text style={styles.connectedNote}>Inbox verified — the scout is ready.</Text>
+          ) : (
             <>
+              <Button
+                label="Connect Google"
+                onPress={connectGoogle}
+                loading={busyGoogle}
+              />
+              <Text style={styles.helpLink}>
+                Google asks for read access to mail metadata only — you approve it on Google's
+                own page, and can revoke it any time.
+              </Text>
               <TextInput
                 style={styles.input}
-                placeholder="app password"
+                placeholder="or paste an IMAP app password"
                 placeholderTextColor={Color.neutral}
                 secureTextEntry
                 autoCapitalize="none"
@@ -106,19 +140,20 @@ export default function Onboarding() {
                 onPress={() => Linking.openURL('https://myaccount.google.com/apppasswords')}
               >
                 <Text style={styles.helpLink}>
-                  Gmail needs a one-time app password — create one here
+                  App passwords suit non-Google inboxes (Outlook, Yahoo, iCloud…)
                 </Text>
               </Pressable>
               {error && <Text style={styles.error}>{error}</Text>}
-              <Button
-                label="Connect inbox"
-                onPress={connect}
-                loading={connecting}
-                disabled={!appPassword.trim() || !email}
-              />
+              {appPassword.trim().length > 0 && (
+                <Button
+                  label="Connect inbox"
+                  variant="secondary"
+                  onPress={connect}
+                  loading={connecting}
+                  disabled={!email}
+                />
+              )}
             </>
-          ) : (
-            <Text style={styles.connectedNote}>Inbox verified — the scout is ready.</Text>
           )}
         </View>
 

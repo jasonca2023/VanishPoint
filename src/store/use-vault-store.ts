@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   type DecisionEvent,
   type GhostAccount,
+  type GoogleTokens,
   type Kpis,
   type MailCredentials,
   type VanishSettings,
@@ -45,14 +46,19 @@ interface VaultState {
   lastScanCount: number | null;
   /** Inbox access for the scout; lives only in the secure vault. */
   mailCreds: MailCredentials | null;
+  /** Google OAuth tokens (gmail.metadata) for the scout; vault-only. */
+  googleTokens: GoogleTokens | null;
 
   initAuth: () => Promise<void>;
   /** Email a one-time sign-in link; creates the account on first use. */
   requestLink: (email: string) => Promise<{ error?: string }>;
+  /** Google consent flow: signs in AND grants the scout inbox metadata. */
+  signInWithGoogle: () => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 
   /** Save (or clear) the inbox credential in the secure vault. */
   setMailCreds: (creds: MailCredentials | null) => Promise<void>;
+  setGoogleTokens: (tokens: GoogleTokens | null) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   /** Run the on-device scout and merge newly found ghosts. */
   runScan: (opts?: { notify?: boolean }) => Promise<GhostAccount[]>;
@@ -74,6 +80,7 @@ const EMPTY_VAULT = {
   lastScanSource: null as 'live' | 'demo' | 'offline' | null,
   lastScanCount: null as number | null,
   mailCreds: null as MailCredentials | null,
+  googleTokens: null as GoogleTokens | null,
 };
 
 export const useVaultStore = create<VaultState>((set, get) => {
@@ -84,12 +91,13 @@ export const useVaultStore = create<VaultState>((set, get) => {
   };
 
   const hydrateVault = async () => {
-    const [accounts, settings, events, onboarded, mailCreds] = await Promise.all([
+    const [accounts, settings, events, onboarded, mailCreds, googleTokens] = await Promise.all([
       loadJson<GhostAccount[]>(key('accounts')),
       loadJson<VanishSettings>(key('settings')),
       loadJson<DecisionEvent[]>(key('events')),
       loadJson<boolean>(key('onboarded')),
       loadJson<MailCredentials>(key('mail')),
+      loadJson<GoogleTokens>(key('google')),
     ]);
     set({
       hydrated: true,
@@ -98,6 +106,19 @@ export const useVaultStore = create<VaultState>((set, get) => {
       events: events ?? [],
       onboarded: onboarded ?? false,
       mailCreds: mailCreds ?? null,
+      googleTokens: googleTokens ?? null,
+    });
+  };
+
+  /** OAuth sign-ins carry Google tokens on the session exactly once (right
+   * after the redirect) — capture them into the vault before they're gone. */
+  const captureProviderTokens = async (session: Session | null) => {
+    const accessToken = session?.provider_token;
+    if (!accessToken) return;
+    const prev = get().googleTokens;
+    await get().setGoogleTokens({
+      accessToken,
+      refreshToken: session?.provider_refresh_token ?? prev?.refreshToken,
     });
   };
 
@@ -109,15 +130,20 @@ export const useVaultStore = create<VaultState>((set, get) => {
     initAuth: async () => {
       const { data } = await supabase.auth.getSession();
       set({ session: data.session, authReady: true });
-      if (data.session) await hydrateVault();
+      if (data.session) {
+        await hydrateVault();
+        await captureProviderTokens(data.session);
+      }
 
       supabase.auth.onAuthStateChange((_event, session) => {
         const prevUid = get().session?.user.id;
         set({ session });
         if (session && session.user.id !== prevUid) {
           set({ ...EMPTY_VAULT });
-          hydrateVault();
-        } else if (!session) {
+          hydrateVault().then(() => captureProviderTokens(session));
+        } else if (session) {
+          captureProviderTokens(session);
+        } else {
           set({ ...EMPTY_VAULT });
         }
       });
@@ -142,6 +168,22 @@ export const useVaultStore = create<VaultState>((set, get) => {
       };
     },
 
+    signInWithGoogle: async () => {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+          // Metadata scope only: sender/subject/date — Google enforces that
+          // it can never return message bodies.
+          scopes: 'email https://www.googleapis.com/auth/gmail.metadata',
+          // offline + consent makes Google include a refresh token, so the
+          // scout can keep scanning after the 1 h access token expires.
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+        },
+      });
+      return error ? { error: error.message } : {};
+    },
+
     signOut: async () => {
       await supabase.auth.signOut();
     },
@@ -155,22 +197,34 @@ export const useVaultStore = create<VaultState>((set, get) => {
       }
     },
 
+    setGoogleTokens: async (tokens) => {
+      set({ googleTokens: tokens });
+      if (tokens) {
+        await saveJson(key('google'), tokens);
+      } else {
+        await clearJson(key('google'));
+      }
+    },
+
     completeOnboarding: async () => {
       set({ onboarded: true });
       await saveJson(key('onboarded'), true);
     },
 
     runScan: async ({ notify = true } = {}) => {
-      const { settings, accounts, mailCreds } = get();
+      const { settings, accounts, mailCreds, googleTokens, session } = get();
 
-      // Ask the scout agent (IMAP walk + HF classifier) first; fall back to
+      // Ask the scout agent (inbox walk + HF classifier) first; fall back to
       // the bundled heuristic demo only when the agent is unreachable. With
-      // a stored credential the scout searches the user's own inbox.
-      const scan = await fetchScoutScan(
-        settings.scoutUrl,
-        settings.dormancyThresholdMonths,
-        mailCreds,
-      );
+      // Google tokens or an IMAP credential it searches the user's own inbox.
+      const scan = await fetchScoutScan(settings.scoutUrl, settings.dormancyThresholdMonths, {
+        google: googleTokens,
+        creds: mailCreds,
+        email: session?.user.email ?? 'you@example.com',
+      });
+      if (scan?.refreshedAccessToken && googleTokens) {
+        await get().setGoogleTokens({ ...googleTokens, accessToken: scan.refreshedAccessToken });
+      }
       const found = scan?.ghosts ?? detectGhostAccounts(settings.dormancyThresholdMonths);
       const source = scan?.source ?? 'offline';
 
