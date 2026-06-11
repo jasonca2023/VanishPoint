@@ -28,7 +28,9 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
     ...(Platform.OS !== 'web' ? { storage: secureSessionStorage } : {}),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // The emailed sign-in link lands back on the web app with the session
+    // in the URL fragment; native uses its own deep-link handling.
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });
 

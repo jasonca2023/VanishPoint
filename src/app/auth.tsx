@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
 import { Wordmark } from '@/components/wordmark';
@@ -18,55 +17,31 @@ import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/c
 import { useVaultStore } from '@/store/use-vault-store';
 
 /**
- * Passwordless: Supabase emails a six-digit code, the code becomes the
- * session. First-time addresses get an account automatically, so there is
- * no separate sign-up path.
+ * Passwordless: Supabase emails a one-time sign-in link. Opening it lands
+ * back on the app with a session, so there is no password and no separate
+ * sign-up path — first-time addresses get an account automatically.
  */
 export default function Auth() {
-  const [stage, setStage] = useState<'email' | 'code'>('email');
+  const [stage, setStage] = useState<'email' | 'sent'>('email');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const requestCode = useVaultStore((s) => s.requestCode);
-  const verifyCode = useVaultStore((s) => s.verifyCode);
+  const requestLink = useVaultStore((s) => s.requestLink);
 
-  const sendCode = async () => {
+  const sendLink = async () => {
     setError(null);
-    setNotice(null);
     if (!email.trim().includes('@')) {
       setError('Enter the email address you want VanishPoint to watch.');
       return;
     }
     setBusy(true);
     try {
-      const { error: err } = await requestCode(email.trim());
+      const { error: err } = await requestLink(email.trim());
       if (err) {
         setError(err);
         return;
       }
-      setStage('code');
-      setNotice(`Code sent to ${email.trim()} — it’s valid for about an hour.`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submitCode = async () => {
-    setError(null);
-    if (code.trim().length < 6) {
-      setError('The code is six digits.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const { error: err } = await verifyCode(email.trim(), code.trim());
-      if (err) {
-        setError(err);
-        return;
-      }
-      router.replace('/');
+      setStage('sent');
     } finally {
       setBusy(false);
     }
@@ -95,7 +70,7 @@ export default function Auth() {
             <View style={styles.form}>
               <Text style={labelStyle}>sign in</Text>
               <Text style={styles.formHint}>
-                No password. We email a one-time code to the inbox the scout will search —
+                No password. We email a one-time sign-in link to the inbox the scout will watch —
                 new addresses get an account automatically.
               </Text>
               <TextInput
@@ -107,40 +82,28 @@ export default function Auth() {
                 keyboardType="email-address"
                 value={email}
                 onChangeText={setEmail}
-                onSubmitEditing={sendCode}
+                onSubmitEditing={sendLink}
               />
               {error && <Text style={styles.error}>{error}</Text>}
-              <Button label="Email me a code" onPress={sendCode} loading={busy} />
+              <Button label="Email me a sign-in link" onPress={sendLink} loading={busy} />
             </View>
           ) : (
             <View style={styles.form}>
-              <Text style={labelStyle}>enter the code</Text>
+              <Text style={labelStyle}>check your inbox</Text>
               <Text style={styles.emailLine}>{email.trim()}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="six-digit code"
-                placeholderTextColor={Color.neutral}
-                keyboardType="number-pad"
-                autoComplete="one-time-code"
-                maxLength={6}
-                value={code}
-                onChangeText={setCode}
-                onSubmitEditing={submitCode}
-                autoFocus
-              />
+              <Text style={styles.formHint}>
+                We sent a sign-in link. Opening it brings you back here, signed in — the link
+                works once and expires in about an hour.
+              </Text>
               {error && <Text style={styles.error}>{error}</Text>}
-              {notice && !error && <Text style={styles.notice}>{notice}</Text>}
-              <Button label="Verify and continue" onPress={submitCode} loading={busy} />
               <View style={styles.linksRow}>
-                <Pressable onPress={sendCode} style={{ padding: Space.sm }}>
-                  <Text style={styles.switch}>Resend code</Text>
+                <Pressable onPress={sendLink} style={{ padding: Space.sm }}>
+                  <Text style={styles.switch}>Resend link</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
                     setStage('email');
-                    setCode('');
                     setError(null);
-                    setNotice(null);
                   }}
                   style={{ padding: Space.sm }}
                 >
@@ -202,8 +165,7 @@ const styles = StyleSheet.create({
     color: Color.ink,
   },
   error: { fontFamily: Font.body, fontSize: Type.sm, color: Color.accent },
-  notice: { fontFamily: Font.body, fontSize: Type.sm, color: Color.ink2 },
-  linksRow: { flexDirection: 'row', justifyContent: 'center', gap: Space.lg },
+  linksRow: { flexDirection: 'row', gap: Space.lg },
   switch: {
     fontFamily: Font.body,
     fontSize: Type.sm,
