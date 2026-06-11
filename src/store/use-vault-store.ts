@@ -9,6 +9,7 @@ import {
   type VanishSettings,
 } from '@/types';
 import { detectGhostAccounts } from '@/services/discovery';
+import { fetchScoutScan } from '@/services/scout';
 import { supabase } from '@/services/supabase';
 import { loadJson, saveJson } from '@/services/vault';
 import {
@@ -37,6 +38,10 @@ interface VaultState {
   settings: VanishSettings;
   events: DecisionEvent[];
   lastScanAt: string | null;
+  /** Where the last scan's data came from. */
+  lastScanSource: 'live' | 'demo' | 'offline' | null;
+  /** Headers the scout walked on the last scan. */
+  lastScanCount: number | null;
 
   initAuth: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ error?: string; needsConfirm?: boolean }>;
@@ -61,6 +66,8 @@ const EMPTY_VAULT = {
   settings: DEFAULT_SETTINGS,
   events: [] as DecisionEvent[],
   lastScanAt: null as string | null,
+  lastScanSource: null as 'live' | 'demo' | 'offline' | null,
+  lastScanCount: null as number | null,
 };
 
 export const useVaultStore = create<VaultState>((set, get) => {
@@ -130,8 +137,17 @@ export const useVaultStore = create<VaultState>((set, get) => {
     },
 
     runScan: async ({ notify = true } = {}) => {
-      const { settings, accounts } = get();
-      const found = detectGhostAccounts(settings.dormancyThresholdMonths);
+      const { settings, accounts, session } = get();
+
+      // Ask the scout agent (IMAP walk + HF classifier) first; fall back to
+      // the bundled heuristic demo only when the agent is unreachable.
+      const scan = await fetchScoutScan(
+        settings.scoutUrl,
+        settings.dormancyThresholdMonths,
+        session?.user.email ?? 'you@example.com',
+      );
+      const found = scan?.ghosts ?? detectGhostAccounts(settings.dormancyThresholdMonths);
+      const source = scan?.source ?? 'offline';
 
       const known = new Map(accounts.map((a) => [a.id, a]));
       const fresh: GhostAccount[] = [];
@@ -161,7 +177,12 @@ export const useVaultStore = create<VaultState>((set, get) => {
         }
       }
 
-      set({ accounts: merged, lastScanAt: now });
+      set({
+        accounts: merged,
+        lastScanAt: now,
+        lastScanSource: source,
+        lastScanCount: scan?.scannedMessages ?? null,
+      });
       await saveJson(key('accounts'), merged);
 
       if (notify) {

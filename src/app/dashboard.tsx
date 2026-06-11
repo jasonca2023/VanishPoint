@@ -14,6 +14,8 @@ export default function Dashboard() {
   const accounts = useVaultStore((s) => s.accounts);
   const runScan = useVaultStore((s) => s.runScan);
   const lastScanAt = useVaultStore((s) => s.lastScanAt);
+  const lastScanSource = useVaultStore((s) => s.lastScanSource);
+  const lastScanCount = useVaultStore((s) => s.lastScanCount);
   const [scanning, setScanning] = useState(false);
 
   const open = useMemo(
@@ -63,11 +65,18 @@ export default function Dashboard() {
             </Text>
             <Text style={styles.scanMeta}>
               {scanning
-                ? 'scout scanning…'
+                ? 'scout reading your inbox…'
                 : lastScanAt
-                  ? `last scan ${new Date(lastScanAt).toLocaleDateString()} ${new Date(
-                      lastScanAt,
-                    ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  ? `${
+                      lastScanSource === 'live'
+                        ? `live · ${lastScanCount ?? '?'} messages`
+                        : lastScanSource === 'demo'
+                          ? `scout demo inbox · ${lastScanCount ?? '?'} messages`
+                          : 'offline · bundled data'
+                    } · ${new Date(lastScanAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}`
                   : 'no scan yet'}
             </Text>
           </View>

@@ -52,10 +52,10 @@ export default function Onboarding() {
         <View style={{ gap: Space.md }}>
           <Step
             label="01 · mail metadata"
-            title="Connect your email"
-            detail="Headers only — sender and date. Message bodies are never read, nothing is uploaded."
+            title="Connect your inbox"
+            detail="The scout agent reads headers only — sender, subject, date — and classifies each one with an on-device model. Bodies are never read, nothing is uploaded."
             state={mail}
-            cta="Connect demo inbox"
+            cta="Connect inbox"
             onPress={connectMail}
           />
           <Step

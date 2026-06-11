@@ -53,6 +53,8 @@ export interface GhostAccount {
   snoozeUntil?: string;
   /** Set when a vanish request was generated. ISO date. */
   vanishRequestedAt?: string;
+  /** Messages from this sender the scout saw (live scans only). */
+  messageCount?: number;
 }
 
 /** Every suggestion→decision pair is logged on-device to compute KPIs. */
@@ -76,6 +78,8 @@ export interface VanishSettings {
   biometricGate: boolean;
   /** GDPR (EU) or CCPA (California) template preference. */
   jurisdiction: 'gdpr' | 'ccpa';
+  /** Where the scout agent (scout/server.py) is reachable. */
+  scoutUrl: string;
 }
 
 export interface Kpis {
@@ -94,4 +98,5 @@ export const DEFAULT_SETTINGS: VanishSettings = {
   notificationsEnabled: true,
   biometricGate: true,
   jurisdiction: 'gdpr',
+  scoutUrl: 'http://localhost:8787',
 };

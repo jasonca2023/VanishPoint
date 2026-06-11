@@ -9,11 +9,14 @@ it never deletes anything without your explicit, biometric-gated confirmation.
 ## Features
 
 ### 🔍 Smart Discovery (the Scout)
-Scans your inbox metadata **entirely on-device** — sender and date headers only, never
-message bodies, and nothing is uploaded anywhere. Accounts that have gone quiet past your
-dormancy threshold (12/18/24/36 months) get flagged, with a risk score based on what kind
-of data the service likely holds (payment details, photos, documents, location…). A single
-recent email from a service vetoes detection, so active accounts are never flagged.
+The Scan button talks to a real AI agent (`scout/`): a local service that walks your inbox
+over IMAP — sender, subject, and date headers only, never message bodies — and classifies
+every message with a **fine-tuned Hugging Face transformer** into footprint signals
+(signup · security · transactional · marketing · personal). Senders with a confident
+account signal that have gone quiet past your dormancy threshold (12/18/24/36 months) get
+flagged with a risk score; newsletters, personal mail, and recently active services never
+do. The agent runs on your own machine, so mail metadata never leaves it. When the agent
+is unreachable the app falls back to bundled demo data and says so on the dashboard.
 
 ### 🔔 Ask-First reminders
 When a ghost is detected you get a push notification — *"You haven't used your 'vimeo.com'
@@ -85,15 +88,29 @@ npm install
 npx expo start        # then i / a for iOS / Android simulator, w for web preview
 ```
 
+In a second terminal, start the scan agent (see [`scout/README.md`](scout/README.md)):
+
+```bash
+cd scout
+uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
+.venv/bin/python train.py     # fine-tune the model once (~2 min on CPU)
+.venv/bin/python server.py    # http://localhost:8787
+```
+
+To scan your **real Gmail**: `cp scout/.env.example scout/.env`, add your address and an
+[app password](https://myaccount.google.com/apppasswords), restart the server. Without
+credentials the agent answers from a bundled sample mailbox. On a phone, point
+Settings → "Scout agent address" at your computer's LAN IP.
+
 Notifications and biometrics need a real device or simulator; the web preview stubs them
 so the full flow stays walkable end-to-end.
 
 ## Current limitations
 
-- The email connector is a deterministic **demo inbox** — real OAuth 2.0 (Gmail/Outlook
-  metadata scope) is the next milestone; the discovery interface is ready for it.
+- The inbox connector is IMAP + app password; OAuth 2.0 (Gmail API metadata scope) is the
+  next milestone.
 - Reminders are scheduled locally rather than via a push backend.
 - Encrypted cloud backup (zero-knowledge, passphrase-derived) is on the roadmap — today
-  there is deliberately no cloud at all.
-- Detection is a transparent heuristic; the scoring functions in `discovery.ts` are where
-  an on-device ML model would slot in.
+  account data deliberately lives only on your devices.
+- The classifier is trained on synthetic headers (`scout/dataset.py`); labelling a slice
+  of real mail would tighten it further.

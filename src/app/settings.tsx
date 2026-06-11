@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
@@ -51,6 +51,20 @@ export default function Settings() {
           value={settings.biometricGate}
           onChange={(v) => updateSettings({ biometricGate: v })}
         />
+        <Text style={styles.rowLabel}>Scout agent address</Text>
+        <TextInput
+          style={styles.urlInput}
+          value={settings.scoutUrl}
+          onChangeText={(v) => updateSettings({ scoutUrl: v.trim() })}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="http://localhost:8787"
+          placeholderTextColor={Color.neutral}
+        />
+        <Text style={styles.hint}>
+          The scan agent that reads your inbox headers and runs the footprint model. On a phone,
+          use your computer's LAN address. Unreachable = bundled demo data.
+        </Text>
         <Text style={styles.rowLabel}>Deletion request template</Text>
         <View style={styles.chips}>
           {(['gdpr', 'ccpa'] as const).map((j) => {
@@ -179,6 +193,15 @@ const styles = StyleSheet.create({
     color: Color.neutral,
   },
   email: { fontFamily: Font.mono, fontSize: Type.sm, color: Color.ink2 },
+  urlInput: {
+    backgroundColor: Color.paper3,
+    borderRadius: Radius.control,
+    paddingHorizontal: Space.lg,
+    paddingVertical: 12,
+    fontFamily: Font.mono,
+    fontSize: Type.sm,
+    color: Color.ink,
+  },
   fineprint: {
     fontFamily: Font.body,
     fontSize: Type.sm,
