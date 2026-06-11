@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 
-import { Palette } from '@/constants/palette';
+import { Button } from '@/components/button';
+import { Wordmark } from '@/components/wordmark';
+import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
 import { setupNotifications } from '@/services/notifications';
 import { useVaultStore } from '@/store/use-vault-store';
 
 type StepState = 'idle' | 'busy' | 'done';
 
 /**
- * Onboarding: connect the mail account (mock OAuth 2.0 in this build),
- * grant notification permission, then run the first on-device scan.
+ * Threshold screen: connect the mail account (mock OAuth 2.0 in this
+ * build), grant notification permission, run the first on-device scan.
  */
 export default function Onboarding() {
   const [mail, setMail] = useState<StepState>('idle');
@@ -43,52 +46,47 @@ export default function Onboarding() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.logo}>◌ VanishPoint</Text>
-        <Text style={styles.title}>Find what you left behind.</Text>
-        <Text style={styles.subtitle}>
-          The Scout scans your inbox metadata on this device — headers only, nothing uploaded —
-          and flags accounts you haven't touched in years. You decide what vanishes.
-        </Text>
+        <Wordmark />
+        <Text style={styles.title}>Two permissions,{'\n'}then the scout works for you.</Text>
 
-        <View style={styles.steps}>
-          <StepCard
-            index={1}
+        <View style={{ gap: Space.md }}>
+          <Step
+            label="01 · mail metadata"
             title="Connect your email"
-            detail="OAuth 2.0, metadata-only scope. We read sender + date headers, never message bodies."
+            detail="Headers only — sender and date. Message bodies are never read, nothing is uploaded."
             state={mail}
-            cta={mail === 'done' ? 'Connected' : 'Connect (demo inbox)'}
+            cta="Connect demo inbox"
             onPress={connectMail}
           />
-          <StepCard
-            index={2}
-            title="Allow reminders"
-            detail="Get a push when a ghost account is detected — with Vanish / Keep / Remind Me Later right on the notification."
+          <Step
+            label="02 · reminders"
+            title="Allow notifications"
+            detail="One push when a ghost account turns up, with Vanish · Keep · Remind Me Later on the notification itself."
             state={notifs}
-            cta={notifs === 'done' ? 'Enabled' : 'Enable notifications'}
+            cta="Enable notifications"
             onPress={enableNotifs}
             disabled={mail !== 'done'}
           />
         </View>
 
-        <Pressable
-          style={[styles.primary, (mail !== 'done' || scanning) && styles.primaryDisabled]}
-          disabled={mail !== 'done' || scanning}
-          onPress={start}
-        >
-          <Text style={styles.primaryText}>{scanning ? 'Scanning…' : 'Run first scan'}</Text>
-        </Pressable>
-
-        <Text style={styles.fineprint}>
-          Your ghost-account list is stored encrypted in this phone's Keychain/Keystore. VanishPoint
-          never deletes anything without your biometric confirmation.
-        </Text>
+        <View style={{ marginTop: 'auto', gap: Space.lg }}>
+          <Button
+            label={scanning ? 'Scanning' : 'Run first scan'}
+            onPress={start}
+            loading={scanning}
+            disabled={mail !== 'done'}
+          />
+          <Text style={styles.fineprint}>
+            The scout suggests; it never deletes. Every vanish needs your fingerprint or face.
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function StepCard({
-  index,
+function Step({
+  label,
   title,
   detail,
   state,
@@ -96,7 +94,7 @@ function StepCard({
   onPress,
   disabled,
 }: {
-  index: number;
+  label: string;
   title: string;
   detail: string;
   state: StepState;
@@ -105,71 +103,65 @@ function StepCard({
   disabled?: boolean;
 }) {
   return (
-    <View style={[styles.card, disabled && { opacity: 0.5 }]}>
-      <View style={styles.cardHeader}>
-        <View style={[styles.stepDot, state === 'done' && { backgroundColor: Palette.accent }]}>
-          <Text style={styles.stepDotText}>{state === 'done' ? '✓' : index}</Text>
-        </View>
-        <Text style={styles.cardTitle}>{title}</Text>
+    <View style={[styles.step, disabled && { opacity: 0.45 }]}>
+      <View style={styles.stepHead}>
+        <Text style={labelStyle}>{label}</Text>
+        {state === 'done' && <Feather name="check" size={14} color={Color.accent} />}
       </View>
-      <Text style={styles.cardDetail}>{detail}</Text>
-      <Pressable
-        style={[styles.secondary, state === 'done' && styles.secondaryDone]}
-        onPress={onPress}
-        disabled={disabled || state !== 'idle'}
-      >
-        <Text style={[styles.secondaryText, state === 'done' && { color: Palette.bg }]}>
-          {state === 'busy' ? 'Working…' : cta}
-        </Text>
-      </Pressable>
+      <Text style={styles.stepTitle}>{title}</Text>
+      <Text style={styles.stepDetail}>{detail}</Text>
+      {state !== 'done' && (
+        <Pressable
+          onPress={onPress}
+          disabled={disabled || state === 'busy'}
+          style={({ pressed }) => [styles.stepCta, pressed && { backgroundColor: Color.paper3 }]}
+        >
+          <Text style={styles.stepCtaText}>{state === 'busy' ? 'Working…' : cta}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Palette.bg },
-  container: { padding: 24, gap: 16 },
-  logo: { color: Palette.accent, fontSize: 18, fontWeight: '800', letterSpacing: 1 },
-  title: { color: Palette.text, fontSize: 32, fontWeight: '800', lineHeight: 38 },
-  subtitle: { color: Palette.textDim, fontSize: 15, lineHeight: 22 },
-  steps: { gap: 12, marginTop: 8 },
-  card: {
-    backgroundColor: Palette.surface,
-    borderColor: Palette.border,
+  safe: { flex: 1, backgroundColor: Color.paper },
+  container: { flexGrow: 1, padding: Space.xl, paddingTop: Space.xxl, gap: Space.xxl },
+  title: {
+    fontFamily: Font.display,
+    fontSize: Type.lg,
+    lineHeight: Type.lg * 1.2,
+    color: Color.ink,
+    letterSpacing: -0.5,
+  },
+  step: {
+    backgroundColor: Color.paper2,
+    borderRadius: Radius.card,
+    padding: Space.xl,
+    gap: Space.sm,
+  },
+  stepHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stepTitle: { fontFamily: Font.display, fontSize: Type.md, color: Color.ink },
+  stepDetail: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.5,
+    color: Color.ink2,
+  },
+  stepCta: {
+    alignSelf: 'flex-start',
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    gap: 10,
+    borderColor: Color.rule,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm + 2,
+    marginTop: Space.sm,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  stepDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: Palette.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
+  stepCtaText: { fontFamily: Font.display, fontSize: Type.sm, color: Color.ink },
+  fineprint: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.5,
+    color: Color.neutral,
+    textAlign: 'center',
   },
-  stepDotText: { color: Palette.text, fontWeight: '700', fontSize: 13 },
-  cardTitle: { color: Palette.text, fontSize: 16, fontWeight: '700' },
-  cardDetail: { color: Palette.textDim, fontSize: 13, lineHeight: 19 },
-  secondary: {
-    borderColor: Palette.accent,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  secondaryDone: { backgroundColor: Palette.accent },
-  secondaryText: { color: Palette.accent, fontWeight: '700' },
-  primary: {
-    backgroundColor: Palette.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  primaryDisabled: { opacity: 0.35 },
-  primaryText: { color: Palette.bg, fontWeight: '800', fontSize: 16 },
-  fineprint: { color: Palette.textDim, fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });

@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { router } from 'expo-router';
 
 import { GhostCard } from '@/components/ghost-card';
-import { Palette } from '@/constants/palette';
+import { Wordmark } from '@/components/wordmark';
+import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
 import { useVaultStore } from '@/store/use-vault-store';
 import type { GhostAccount } from '@/types';
 
@@ -11,18 +14,20 @@ export default function Dashboard() {
   const accounts = useVaultStore((s) => s.accounts);
   const runScan = useVaultStore((s) => s.runScan);
   const lastScanAt = useVaultStore((s) => s.lastScanAt);
-  const kpis = useVaultStore((s) => s.kpis)();
   const [scanning, setScanning] = useState(false);
 
-  const sections = useMemo(() => {
-    const by = (statuses: GhostAccount['status'][]) =>
-      accounts.filter((a) => statuses.includes(a.status));
-    return [
-      { title: 'Needs your decision', data: by(['detected']) },
-      { title: 'Vanishing', data: by(['vanishing']) },
-      { title: 'Resolved', data: by(['vanished', 'kept', 'snoozed']) },
-    ].filter((s) => s.data.length > 0);
-  }, [accounts]);
+  const open = useMemo(
+    () => accounts.filter((a) => a.status === 'detected'),
+    [accounts],
+  );
+  const inFlight = useMemo(
+    () => accounts.filter((a) => a.status === 'vanishing'),
+    [accounts],
+  );
+  const resolved = useMemo(
+    () => accounts.filter((a) => ['vanished', 'kept', 'snoozed'].includes(a.status)),
+    [accounts],
+  );
 
   const scan = async () => {
     setScanning(true);
@@ -34,114 +39,129 @@ export default function Dashboard() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      <View style={styles.kpiRow}>
-        <Kpi label="Detected" value={String(kpis.totalDetected)} />
-        <Kpi label="Vanished" value={String(kpis.vanishCount)} tint={Palette.danger} />
-        <Kpi
-          label="Permission rate"
-          value={kpis.permissionRate === null ? '—' : `${kpis.permissionRate}%`}
-        />
-        <Kpi
-          label="Safety"
-          value={`${kpis.safetyScore}`}
-          tint={kpis.safetyScore === 100 ? Palette.accent : Palette.warn}
-        />
-      </View>
-
-      <View style={styles.scanRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.scanTitle}>{scanning ? 'Scout is scanning…' : 'Scout idle'}</Text>
-          <Text style={styles.scanMeta}>
-            {lastScanAt
-              ? `Last low-energy scan: ${new Date(lastScanAt).toLocaleString()}`
-              : 'No scan yet'}
-          </Text>
-        </View>
-        <Pressable style={styles.scanButton} onPress={scan} disabled={scanning}>
-          <Text style={styles.scanButtonText}>{scanning ? '…' : 'Scan now'}</Text>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.header}>
+        <Wordmark />
+        <Pressable
+          accessibilityLabel="Settings"
+          onPress={() => router.push('/settings')}
+          hitSlop={8}
+        >
+          <Feather name="sliders" size={18} color={Color.ink2} />
         </Pressable>
       </View>
 
-      {sections.length === 0 && (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No ghosts yet</Text>
-          <Text style={styles.emptyText}>
-            Run a scan and the Scout will surface accounts that have gone quiet.
-          </Text>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* The one outlier moment per design.md: the footprint count. */}
+        <View style={styles.footprint}>
+          <Text style={styles.bigCount}>{String(open.length).padStart(2, '0')}</Text>
+          <View style={{ flex: 1, gap: Space.xs }}>
+            <Text style={styles.footprintLine}>
+              {open.length === 1
+                ? 'ghost account is waiting on you'
+                : 'ghost accounts are waiting on you'}
+            </Text>
+            <Text style={styles.scanMeta}>
+              {scanning
+                ? 'scout scanning…'
+                : lastScanAt
+                  ? `last scan ${new Date(lastScanAt).toLocaleDateString()} ${new Date(
+                      lastScanAt,
+                    ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : 'no scan yet'}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Run scan"
+            onPress={scan}
+            disabled={scanning}
+            style={({ pressed }) => [styles.scanBtn, pressed && { backgroundColor: Color.accentDim }]}
+          >
+            <Feather name="refresh-cw" size={16} color={Color.accentInk} />
+          </Pressable>
         </View>
-      )}
 
-      {sections.map((section) => (
-        <View key={section.title} style={{ gap: 10 }}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-          {section.data.map((account) => (
-            <GhostCard
-              key={account.id}
-              account={account}
-              onPress={() =>
-                router.push({ pathname: '/account/[id]', params: { id: account.id } })
-              }
-            />
-          ))}
-        </View>
-      ))}
+        {accounts.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>Nothing surfaced yet</Text>
+            <Text style={styles.emptyText}>
+              Run a scan and the scout will go through your mail metadata for accounts that went
+              quiet.
+            </Text>
+          </View>
+        )}
 
-      <Pressable style={styles.settingsLink} onPress={() => router.push('/settings')}>
-        <Text style={styles.settingsLinkText}>Settings & KPIs →</Text>
-      </Pressable>
-    </ScrollView>
+        {open.length > 0 && <Section title="needs your decision" data={open} />}
+        {inFlight.length > 0 && <Section title="vanishing" data={inFlight} />}
+        {resolved.length > 0 && <Section title="resolved" data={resolved} />}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-function Kpi({ label, value, tint = Palette.text }: { label: string; value: string; tint?: string }) {
+function Section({ title, data }: { title: string; data: GhostAccount[] }) {
   return (
-    <View style={styles.kpi}>
-      <Text style={[styles.kpiValue, { color: tint }]}>{value}</Text>
-      <Text style={styles.kpiLabel}>{label}</Text>
+    <View style={{ gap: Space.md }}>
+      <Text style={labelStyle}>{title}</Text>
+      {data.map((account) => (
+        <GhostCard
+          key={account.id}
+          account={account}
+          onPress={() => router.push({ pathname: '/account/[id]', params: { id: account.id } })}
+        />
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Palette.bg },
-  container: { padding: 16, gap: 18, paddingBottom: 48 },
-  kpiRow: { flexDirection: 'row', gap: 8 },
-  kpi: {
-    flex: 1,
-    backgroundColor: Palette.surface,
-    borderColor: Palette.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
+  safe: { flex: 1, backgroundColor: Color.paper },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 2,
+    paddingHorizontal: Space.xl,
+    paddingVertical: Space.lg,
   },
-  kpiValue: { fontSize: 18, fontWeight: '800' },
-  kpiLabel: { color: Palette.textDim, fontSize: 10, textAlign: 'center' },
-  scanRow: {
+  container: { padding: Space.xl, paddingTop: Space.sm, gap: Space.xxl, paddingBottom: Space.xxxl },
+  footprint: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: Palette.surface,
-    borderColor: Palette.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
+    gap: Space.lg,
+    backgroundColor: Color.paper2,
+    borderRadius: Radius.card,
+    padding: Space.xl,
   },
-  scanTitle: { color: Palette.text, fontWeight: '700', fontSize: 14 },
-  scanMeta: { color: Palette.textDim, fontSize: 11, marginTop: 2 },
-  scanButton: {
-    backgroundColor: Palette.accent,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  bigCount: {
+    fontFamily: Font.mono,
+    fontSize: Type.display,
+    color: Color.ink,
+    letterSpacing: -1,
   },
-  scanButtonText: { color: Palette.bg, fontWeight: '800' },
-  sectionTitle: { color: Palette.textDim, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  empty: { alignItems: 'center', paddingVertical: 48, gap: 6 },
-  emptyTitle: { color: Palette.text, fontSize: 18, fontWeight: '700' },
-  emptyText: { color: Palette.textDim, fontSize: 13, textAlign: 'center', paddingHorizontal: 32 },
-  settingsLink: { alignItems: 'center', paddingVertical: 8 },
-  settingsLinkText: { color: Palette.accent, fontWeight: '600' },
+  footprintLine: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.4,
+    color: Color.ink2,
+  },
+  scanMeta: { fontFamily: Font.mono, fontSize: Type.xs, color: Color.neutral },
+  scanBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    backgroundColor: Color.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  empty: { alignItems: 'center', paddingVertical: Space.xxxl, gap: Space.sm },
+  emptyTitle: { fontFamily: Font.display, fontSize: Type.md, color: Color.ink },
+  emptyText: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.5,
+    color: Color.neutral,
+    textAlign: 'center',
+    maxWidth: 280,
+  },
 });

@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-06-10",
+    "scope": "app",
+    "macrostructure": "app-screens (RN: threshold + data-forward families)",
+    "theme": "custom",
+    "theme_axes": "dark / grotesk-sans / warm",
+    "vibe": "after-dark privacy tool, ember on warm black",
+    "enrichment": "none",
+    "brief": "VanishPoint mobile app redesign — Supabase auth + full Ember system per design.md"
+  }
+]

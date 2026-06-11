@@ -31,10 +31,14 @@ VanishPoint generates a pre-filled **GDPR Article 17 / CCPA §1798.105** deletio
 you can send to the service's privacy officer in one tap, or finalize in the in-app
 browser on the service's own privacy portal. Mark it done and watch your footprint shrink.
 
-### 🔐 Security
-- Ghost-account list stored encrypted in the **iOS Keychain / Android Keystore**
+### 🔐 Accounts & security
+- **Sign up / sign in with Supabase Auth** (email + password, confirmation emails included) —
+  identity lives in the cloud, your data doesn't
+- Ghost-account list stored encrypted in the **iOS Keychain / Android Keystore**, namespaced
+  per signed-in user, so a shared phone never leaks one person's ghosts to another
+- The Supabase session token itself is kept in the Keychain/Keystore too
 - Biometric authentication required before any Vanish action
-- Zero cloud: all analysis, storage, and decision history stay on the phone
+- All analysis, storage, and decision history stay on the phone
 
 ### 📊 Built-in metrics
 Settings shows how well the Scout is doing: **Permission Rate** (how often you accept its
@@ -44,11 +48,19 @@ ever flags an account you still use — tap *"I still use this account"* to teac
 ## Stack
 
 - **React Native + Expo SDK 56** (TypeScript, expo-router) — iOS, Android, and a web dev preview
+- **Supabase Auth** (`@supabase/supabase-js`) for sign up / sign in
 - **zustand** for state, persisted via **expo-secure-store**
 - **expo-local-authentication** for the FaceID/TouchID gate
 - **expo-notifications** for actionable reminders
 - **react-native-gesture-handler + reanimated** for the swipe-to-Vanish control
 - **expo-web-browser** for the internal deletion-portal browser
+
+## Design
+
+The UI follows a locked design system — see [`design.md`](design.md). Dark warm-black canvas,
+a single ember accent, Geist for display and body with Geist Mono reserved for machine data
+(domains, dates, scores), a 4-pt spacing scale, and fade-only motion. The swipe-to-vanish
+spring is the one deliberate physical exception.
 
 ## Project layout
 

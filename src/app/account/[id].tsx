@@ -3,9 +3,10 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 
-import { RiskBadge } from '@/components/risk-badge';
+import { Button } from '@/components/button';
+import { RiskMeter } from '@/components/risk-meter';
 import { SlideToVanish } from '@/components/slide-to-vanish';
-import { Palette } from '@/constants/palette';
+import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
 import { confirmWithBiometrics } from '@/services/biometrics';
 import { shortDate } from '@/services/discovery';
 import { buildDeletionRequest, mailtoUrl } from '@/services/gdpr';
@@ -23,7 +24,7 @@ export default function AccountDetail() {
   if (!account) {
     return (
       <View style={styles.missing}>
-        <Text style={{ color: Palette.textDim }}>This account is no longer tracked.</Text>
+        <Text style={styles.missingText}>This account is no longer tracked.</Text>
       </View>
     );
   }
@@ -44,7 +45,7 @@ export default function AccountDetail() {
 
   const openPortal = async () => {
     if (account.privacyUrl) {
-      // PRD: internal browser, so the user finalizes without leaving the app.
+      // Internal browser, so the user finalizes without leaving the app.
       await WebBrowser.openBrowserAsync(account.privacyUrl);
     }
   };
@@ -57,11 +58,11 @@ export default function AccountDetail() {
   const onReportActive = () => {
     Alert.alert(
       'Still using this account?',
-      `Telling the Scout that ${account.serviceName} is active whitelists it and tunes detection to be less annoying.`,
+      `Telling the scout ${account.serviceName} is active whitelists it and tunes future detection.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: "It's active — whitelist it",
+          text: 'Whitelist it',
           onPress: async () => {
             await reportFalsePositive(account.id);
             router.back();
@@ -71,92 +72,92 @@ export default function AccountDetail() {
     );
   };
 
+  const undecided = account.status === 'detected' || account.status === 'snoozed';
+
   return (
     <>
       <Stack.Screen options={{ title: account.serviceName }} />
       <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-        <View style={styles.header}>
+        <View style={{ gap: Space.sm }}>
           <Text style={styles.domain}>{account.domain}</Text>
-          <RiskBadge score={account.riskScore} />
-        </View>
-        <Text style={styles.headline}>
-          Dormant for {account.dormantMonths} months — last activity {shortDate(account.lastSeenAt)}.
-        </Text>
-
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>What this account likely holds</Text>
-          <Text style={styles.categories}>
-            {account.dataCategories.map((c) => `• ${c}`).join('\n')}
+          <Text style={styles.headline}>
+            Quiet for {account.dormantMonths} months.{'\n'}Last sign of life:{' '}
+            {shortDate(account.lastSeenAt)}.
           </Text>
         </View>
 
+        <RiskMeter score={account.riskScore} />
+
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Scout evidence (email headers only)</Text>
+          <Text style={labelStyle}>likely holds</Text>
+          <Text style={styles.categories}>{account.dataCategories.join('  ·  ')}</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={labelStyle}>scout evidence — headers only</Text>
           {account.signals.map((s, i) => (
             <View key={i} style={styles.signal}>
               <Text style={styles.signalDate}>{shortDate(s.receivedAt)}</Text>
               <Text style={styles.signalSubject} numberOfLines={1}>
                 {s.subject}
               </Text>
-              <Text style={styles.signalKind}>{s.kind}</Text>
             </View>
           ))}
         </View>
 
-        {account.status === 'detected' || account.status === 'snoozed' ? (
-          <>
+        {undecided && (
+          <View style={{ gap: Space.lg, marginTop: Space.sm }}>
             <SlideToVanish onComplete={onVanish} />
             {authFailed && (
               <Text style={styles.authFailed}>Biometric check failed — nothing was sent.</Text>
             )}
             <View style={styles.row}>
-              <Pressable style={styles.keepButton} onPress={() => decide(account.id, 'keep').then(router.back)}>
-                <Text style={styles.keepText}>Keep</Text>
-              </Pressable>
-              <Pressable style={styles.snoozeButton} onPress={() => decide(account.id, 'snooze').then(router.back)}>
-                <Text style={styles.snoozeText}>Remind me in 30 days</Text>
-              </Pressable>
+              <Button
+                label="Keep it"
+                variant="secondary"
+                style={{ flex: 1 }}
+                onPress={() => decide(account.id, 'keep').then(router.back)}
+              />
+              <Button
+                label="Ask me in 30 days"
+                variant="secondary"
+                style={{ flex: 1 }}
+                onPress={() => decide(account.id, 'snooze').then(router.back)}
+              />
             </View>
-            <Pressable onPress={onReportActive}>
-              <Text style={styles.reportLink}>I still use this account</Text>
-            </Pressable>
-          </>
-        ) : null}
+            <Button label="I still use this account" variant="quiet" onPress={onReportActive} />
+          </View>
+        )}
 
-        {account.status === 'vanishing' ? (
+        {account.status === 'vanishing' && (
           <View style={styles.panel}>
-            <Text style={styles.panelTitle}>
-              Deletion request ({settings.jurisdiction.toUpperCase()})
+            <Text style={labelStyle}>
+              deletion request · {settings.jurisdiction === 'gdpr' ? 'gdpr art. 17' : 'ccpa §1798.105'}
             </Text>
             <Text style={styles.letter}>{request.body}</Text>
-            <View style={{ gap: 8 }}>
+            <View style={{ gap: Space.md, marginTop: Space.sm }}>
               {account.privacyUrl && (
-                <Pressable style={styles.primary} onPress={openPortal}>
-                  <Text style={styles.primaryText}>Open {account.serviceName} privacy portal</Text>
-                </Pressable>
+                <Button label="Open privacy portal" onPress={openPortal} />
               )}
               {account.dpoEmail && (
-                <Pressable style={styles.secondaryBtn} onPress={sendEmail}>
-                  <Text style={styles.secondaryBtnText}>Email DPO ({account.dpoEmail})</Text>
-                </Pressable>
+                <Button label="Email the request" variant="secondary" onPress={sendEmail} />
               )}
-              <Pressable
-                style={styles.doneBtn}
+              <Button
+                label="Mark as vanished"
+                variant="quiet"
                 onPress={() => markVanished(account.id).then(router.back)}
-              >
-                <Text style={styles.doneBtnText}>Mark as vanished ✓</Text>
-              </Pressable>
+              />
             </View>
           </View>
-        ) : null}
+        )}
 
         {account.status === 'kept' && (
-          <Text style={styles.kept}>
+          <Text style={styles.statusNote}>
             Whitelisted until {account.snoozeUntil ? shortDate(account.snoozeUntil) : 'next year'}.
           </Text>
         )}
         {account.status === 'vanished' && (
-          <Text style={styles.vanished}>This account has vanished. One less footprint. ✓</Text>
+          <Text style={styles.statusNote}>Vanished. One less trail.</Text>
         )}
       </ScrollView>
     </>
@@ -164,54 +165,50 @@ export default function AccountDetail() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Palette.bg },
-  container: { padding: 16, gap: 14, paddingBottom: 48 },
-  missing: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.bg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  domain: { color: Palette.textDim, fontSize: 14 },
-  headline: { color: Palette.text, fontSize: 20, fontWeight: '700', lineHeight: 27 },
-  panel: {
-    backgroundColor: Palette.surface,
-    borderColor: Palette.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  panelTitle: { color: Palette.textDim, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  categories: { color: Palette.text, fontSize: 14, lineHeight: 22, textTransform: 'capitalize' },
-  signal: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  signalDate: { color: Palette.textDim, fontSize: 12, width: 70 },
-  signalSubject: { color: Palette.text, fontSize: 13, flex: 1 },
-  signalKind: { color: Palette.accent, fontSize: 11 },
-  authFailed: { color: Palette.danger, fontSize: 13, textAlign: 'center' },
-  row: { flexDirection: 'row', gap: 10 },
-  keepButton: {
+  screen: { flex: 1, backgroundColor: Color.paper },
+  container: { padding: Space.xl, gap: Space.xl, paddingBottom: Space.xxxl },
+  missing: {
     flex: 1,
-    borderColor: Palette.keep,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Color.paper,
   },
-  keepText: { color: Palette.keep, fontWeight: '700' },
-  snoozeButton: {
-    flex: 2,
-    borderColor: Palette.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
+  missingText: { fontFamily: Font.body, fontSize: Type.sm, color: Color.neutral },
+  domain: { fontFamily: Font.mono, fontSize: Type.sm, color: Color.neutral },
+  headline: {
+    fontFamily: Font.display,
+    fontSize: Type.lg,
+    lineHeight: Type.lg * 1.2,
+    color: Color.ink,
+    letterSpacing: -0.5,
   },
-  snoozeText: { color: Palette.textDim, fontWeight: '600' },
-  reportLink: { color: Palette.textDim, textAlign: 'center', textDecorationLine: 'underline', fontSize: 13 },
-  letter: { color: Palette.text, fontSize: 12, lineHeight: 18, fontFamily: 'Courier' },
-  primary: { backgroundColor: Palette.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  primaryText: { color: Palette.bg, fontWeight: '800' },
-  secondaryBtn: { borderColor: Palette.accent, borderWidth: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  secondaryBtnText: { color: Palette.accent, fontWeight: '700' },
-  doneBtn: { borderColor: Palette.border, borderWidth: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  doneBtnText: { color: Palette.textDim, fontWeight: '700' },
-  kept: { color: Palette.keep, textAlign: 'center', fontSize: 14 },
-  vanished: { color: Palette.accent, textAlign: 'center', fontSize: 14 },
+  panel: {
+    backgroundColor: Color.paper2,
+    borderRadius: Radius.card,
+    padding: Space.xl,
+    gap: Space.md,
+  },
+  categories: { fontFamily: Font.body, fontSize: Type.base, color: Color.ink },
+  signal: { flexDirection: 'row', alignItems: 'baseline', gap: Space.md },
+  signalDate: { fontFamily: Font.mono, fontSize: Type.xs, color: Color.neutral, width: 68 },
+  signalSubject: { fontFamily: Font.body, fontSize: Type.sm, color: Color.ink2, flex: 1 },
+  authFailed: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    color: Color.accent,
+    textAlign: 'center',
+  },
+  row: { flexDirection: 'row', gap: Space.md },
+  letter: {
+    fontFamily: Font.mono,
+    fontSize: Type.xs,
+    lineHeight: Type.xs * 1.6,
+    color: Color.ink2,
+  },
+  statusNote: {
+    fontFamily: Font.body,
+    fontSize: Type.base,
+    color: Color.ink2,
+    textAlign: 'center',
+  },
 });

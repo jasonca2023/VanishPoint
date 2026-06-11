@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -9,15 +10,16 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { Palette } from '@/constants/palette';
+import { Color, Font, Radius, Type } from '@/constants/theme';
 
-const KNOB = 56;
-const TRACK_PADDING = 4;
+const KNOB = 52;
+const PAD = 4;
 
 /**
- * "Swipe right to Vanish": the deliberate, non-accidental confirmation
- * gesture from the PRD. The knob must be dragged the full track width;
- * releasing early springs back. Completion hands off to the biometric gate.
+ * "Swipe right to Vanish" — the one deliberately physical control in the
+ * app. The knob must travel the full track; early release springs back.
+ * Completion hands off to the biometric gate. (The spring is functional
+ * feedback, the design system's single motion exception.)
  */
 export function SlideToVanish({
   onComplete,
@@ -28,7 +30,7 @@ export function SlideToVanish({
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
   const x = useSharedValue(0);
-  const maxX = Math.max(0, trackWidth - KNOB - TRACK_PADDING * 2);
+  const maxX = Math.max(0, trackWidth - KNOB - PAD * 2);
 
   const pan = Gesture.Pan()
     .enabled(!disabled && maxX > 0)
@@ -54,12 +56,13 @@ export function SlideToVanish({
   return (
     <GestureDetector gesture={pan}>
       <View
+        accessibilityLabel="Swipe right to vanish this account"
         style={[styles.track, disabled && { opacity: 0.4 }]}
         onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
       >
-        <Animated.Text style={[styles.label, labelStyle]}>Swipe right to Vanish →</Animated.Text>
+        <Animated.Text style={[styles.label, labelStyle]}>swipe right to vanish</Animated.Text>
         <Animated.View style={[styles.knob, knobStyle]}>
-          <Text style={styles.knobIcon}>✕</Text>
+          <Feather name="arrow-right" size={20} color={Color.accentInk} />
         </Animated.View>
       </View>
     </GestureDetector>
@@ -68,28 +71,26 @@ export function SlideToVanish({
 
 const styles = StyleSheet.create({
   track: {
-    height: KNOB + TRACK_PADDING * 2,
-    borderRadius: (KNOB + TRACK_PADDING * 2) / 2,
-    backgroundColor: Palette.surfaceRaised,
-    borderWidth: 1,
-    borderColor: Palette.danger,
+    height: KNOB + PAD * 2,
+    borderRadius: Radius.pill,
+    backgroundColor: Color.paper3,
     justifyContent: 'center',
-    padding: TRACK_PADDING,
+    padding: PAD,
   },
   label: {
     position: 'absolute',
     alignSelf: 'center',
-    color: Palette.danger,
-    fontWeight: '600',
-    fontSize: 15,
+    fontFamily: Font.mono,
+    fontSize: Type.sm,
+    color: Color.ink2,
+    letterSpacing: 0.5,
   },
   knob: {
     width: KNOB,
     height: KNOB,
     borderRadius: KNOB / 2,
-    backgroundColor: Palette.danger,
+    backgroundColor: Color.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  knobIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
 });

@@ -1,64 +1,73 @@
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { router } from 'expo-router';
 
-import { Palette } from '@/constants/palette';
+import { Button } from '@/components/button';
+import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
 import { useVaultStore } from '@/store/use-vault-store';
 
 const THRESHOLDS = [12, 18, 24, 36] as const;
 
 export default function Settings() {
+  const session = useVaultStore((s) => s.session);
   const settings = useVaultStore((s) => s.settings);
   const updateSettings = useVaultStore((s) => s.updateSettings);
+  const signOut = useVaultStore((s) => s.signOut);
   const kpis = useVaultStore((s) => s.kpis)();
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      <Text style={styles.sectionTitle}>Scout tuning</Text>
-
       <View style={styles.panel}>
-        <Text style={styles.label}>Treat an account as dormant after</Text>
+        <Text style={labelStyle}>scout tuning</Text>
+        <Text style={styles.rowLabel}>Treat an account as dormant after</Text>
         <View style={styles.chips}>
           {THRESHOLDS.map((months) => {
             const active = settings.dormancyThresholdMonths === months;
             return (
               <Pressable
                 key={months}
-                style={[styles.chip, active && styles.chipActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active && styles.chipActive,
+                  pressed && !active && { backgroundColor: Color.paper3 },
+                ]}
                 onPress={() => updateSettings({ dormancyThresholdMonths: months })}
               >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                <Text style={[styles.chipText, active && { color: Color.accentInk }]}>
                   {months} mo
                 </Text>
               </Pressable>
             );
           })}
         </View>
-      </View>
-
-      <View style={styles.panel}>
         <RowSwitch
-          label="Ghost-account push reminders"
+          label="Push reminders for new ghosts"
           value={settings.notificationsEnabled}
           onChange={(v) => updateSettings({ notificationsEnabled: v })}
         />
         <RowSwitch
-          label="Require FaceID / TouchID to Vanish"
+          label="Require Face ID / Touch ID to vanish"
           value={settings.biometricGate}
           onChange={(v) => updateSettings({ biometricGate: v })}
         />
-      </View>
-
-      <View style={styles.panel}>
-        <Text style={styles.label}>Deletion request template</Text>
+        <Text style={styles.rowLabel}>Deletion request template</Text>
         <View style={styles.chips}>
           {(['gdpr', 'ccpa'] as const).map((j) => {
             const active = settings.jurisdiction === j;
             return (
               <Pressable
                 key={j}
-                style={[styles.chip, active && styles.chipActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active && styles.chipActive,
+                  pressed && !active && { backgroundColor: Color.paper3 },
+                ]}
                 onPress={() => updateSettings({ jurisdiction: j })}
               >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                <Text style={[styles.chipText, active && { color: Color.accentInk }]}>
                   {j.toUpperCase()}
                 </Text>
               </Pressable>
@@ -67,28 +76,41 @@ export default function Settings() {
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>Success metrics</Text>
       <View style={styles.panel}>
+        <Text style={labelStyle}>how the scout is doing</Text>
         <Metric
           label="Permission rate"
-          value={kpis.permissionRate === null ? 'No decisions yet' : `${kpis.permissionRate}%`}
-          hint="Share of Scout suggestions you accepted — used to tune detection so it isn't annoying."
+          value={kpis.permissionRate === null ? '—' : `${kpis.permissionRate}%`}
+          hint="Share of suggestions you accepted. Low means the scout is being annoying."
         />
         <Metric
-          label="Vanish rate"
-          value={`${kpis.vanishCount} of ${kpis.totalDetected} detected`}
-          hint="Ghost accounts you've vanished (or are vanishing) since first launch."
+          label="Vanished"
+          value={`${kpis.vanishCount}/${kpis.totalDetected}`}
+          hint="Ghost accounts gone (or going) since you started."
         />
         <Metric
           label="Safety score"
-          value={`${kpis.safetyScore} / 100`}
-          hint="Drops if the Scout ever flags an account you still use. Target: 100, always."
+          value={`${kpis.safetyScore}`}
+          hint="Drops when the scout flags an account you still use. Target: 100, always."
+        />
+      </View>
+
+      <View style={styles.panel}>
+        <Text style={labelStyle}>account</Text>
+        <Text style={styles.email}>{session?.user.email ?? '—'}</Text>
+        <Button
+          label="Sign out"
+          variant="secondary"
+          onPress={async () => {
+            await signOut();
+            router.replace('/auth');
+          }}
         />
       </View>
 
       <Text style={styles.fineprint}>
-        All analysis runs on this device. The ghost-account list lives in the
-        Keychain/Keystore. Zero-knowledge encrypted backup is on the roadmap.
+        Analysis runs on this device. Your ghost list lives in the Keychain/Keystore under your
+        account, and is identity-scoped — signing out locks it away.
       </Text>
     </ScrollView>
   );
@@ -105,12 +127,12 @@ function RowSwitch({
 }) {
   return (
     <View style={styles.switchRow}>
-      <Text style={[styles.label, { flex: 1 }]}>{label}</Text>
+      <Text style={[styles.rowLabel, { flex: 1 }]}>{label}</Text>
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ true: Palette.accent, false: Palette.surfaceRaised }}
-        thumbColor="#fff"
+        trackColor={{ true: Color.accentDim, false: Color.paper3 }}
+        thumbColor={Color.ink}
       />
     </View>
   );
@@ -118,9 +140,9 @@ function RowSwitch({
 
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <View style={{ gap: 2 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={styles.label}>{label}</Text>
+    <View style={{ gap: Space.xs }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.metricValue}>{value}</Text>
       </View>
       <Text style={styles.hint}>{hint}</Text>
@@ -129,31 +151,40 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Palette.bg },
-  container: { padding: 16, gap: 14, paddingBottom: 48 },
-  sectionTitle: { color: Palette.textDim, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  screen: { flex: 1, backgroundColor: Color.paper },
+  container: { padding: Space.xl, gap: Space.lg, paddingBottom: Space.xxxl },
   panel: {
-    backgroundColor: Palette.surface,
-    borderColor: Palette.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 14,
+    backgroundColor: Color.paper2,
+    borderRadius: Radius.card,
+    padding: Space.xl,
+    gap: Space.lg,
   },
-  label: { color: Palette.text, fontSize: 14, fontWeight: '600' },
-  chips: { flexDirection: 'row', gap: 8 },
+  rowLabel: { fontFamily: Font.body, fontSize: Type.base, color: Color.ink },
+  chips: { flexDirection: 'row', gap: Space.sm, flexWrap: 'wrap' },
   chip: {
-    borderColor: Palette.border,
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderColor: Color.rule,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm + 2,
   },
-  chipActive: { backgroundColor: Palette.accent, borderColor: Palette.accent },
-  chipText: { color: Palette.textDim, fontWeight: '700', fontSize: 13 },
-  chipTextActive: { color: Palette.bg },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  metricValue: { color: Palette.accent, fontWeight: '800', fontSize: 14 },
-  hint: { color: Palette.textDim, fontSize: 12, lineHeight: 17 },
-  fineprint: { color: Palette.textDim, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  chipActive: { backgroundColor: Color.accent, borderColor: Color.accent },
+  chipText: { fontFamily: Font.display, fontSize: Type.sm, color: Color.ink2 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: Space.md },
+  metricValue: { fontFamily: Font.mono, fontSize: Type.md, color: Color.ink },
+  hint: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.45,
+    color: Color.neutral,
+  },
+  email: { fontFamily: Font.mono, fontSize: Type.sm, color: Color.ink2 },
+  fineprint: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.5,
+    color: Color.neutral,
+    textAlign: 'center',
+    paddingHorizontal: Space.lg,
+  },
 });
