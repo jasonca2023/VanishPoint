@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 
 import { GhostCard } from '@/components/ghost-card';
 import { Wordmark } from '@/components/wordmark';
-import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
+import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
 import { useVaultStore } from '@/store/use-vault-store';
 import type { GhostAccount } from '@/types';
 
@@ -118,13 +118,20 @@ function Section({ title, data }: { title: string; data: GhostAccount[] }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Color.paper },
   header: {
+    ...contentColumn,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Space.xl,
     paddingVertical: Space.lg,
   },
-  container: { padding: Space.xl, paddingTop: Space.sm, gap: Space.xxl, paddingBottom: Space.xxxl },
+  container: {
+    ...contentColumn,
+    padding: Space.xl,
+    paddingTop: Space.sm,
+    gap: Space.xxl,
+    paddingBottom: Space.xxxl,
+  },
   footprint: {
     flexDirection: 'row',
     alignItems: 'center',

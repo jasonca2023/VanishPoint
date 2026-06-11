@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
 import { Wordmark } from '@/components/wordmark';
-import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
+import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
 import { useVaultStore } from '@/store/use-vault-store';
 
 type Mode = 'signin' | 'signup';
@@ -139,6 +139,7 @@ export default function Auth() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Color.paper },
   container: {
+    ...contentColumn,
     flexGrow: 1,
     padding: Space.xl,
     paddingTop: Space.xxl,

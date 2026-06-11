@@ -6,7 +6,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Button } from '@/components/button';
 import { RiskMeter } from '@/components/risk-meter';
 import { SlideToVanish } from '@/components/slide-to-vanish';
-import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
+import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
 import { confirmWithBiometrics } from '@/services/biometrics';
 import { shortDate } from '@/services/discovery';
 import { buildDeletionRequest, mailtoUrl } from '@/services/gdpr';
@@ -166,7 +166,7 @@ export default function AccountDetail() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Color.paper },
-  container: { padding: Space.xl, gap: Space.xl, paddingBottom: Space.xxxl },
+  container: { ...contentColumn, padding: Space.xl, gap: Space.xl, paddingBottom: Space.xxxl },
   missing: {
     flex: 1,
     alignItems: 'center',

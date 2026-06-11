@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
-import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
+import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
 import { useVaultStore } from '@/store/use-vault-store';
 
 const THRESHOLDS = [12, 18, 24, 36] as const;
@@ -152,7 +152,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Color.paper },
-  container: { padding: Space.xl, gap: Space.lg, paddingBottom: Space.xxxl },
+  container: { ...contentColumn, padding: Space.xl, gap: Space.lg, paddingBottom: Space.xxxl },
   panel: {
     backgroundColor: Color.paper2,
     borderRadius: Radius.card,

@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 
 import { Button } from '@/components/button';
 import { Wordmark } from '@/components/wordmark';
-import { Color, Font, Radius, Space, Type, labelStyle } from '@/constants/theme';
+import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
 import { setupNotifications } from '@/services/notifications';
 import { useVaultStore } from '@/store/use-vault-store';
 
@@ -125,7 +125,13 @@ function Step({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Color.paper },
-  container: { flexGrow: 1, padding: Space.xl, paddingTop: Space.xxl, gap: Space.xxl },
+  container: {
+    ...contentColumn,
+    flexGrow: 1,
+    padding: Space.xl,
+    paddingTop: Space.xxl,
+    gap: Space.xxl,
+  },
   title: {
     fontFamily: Font.display,
     fontSize: Type.lg,

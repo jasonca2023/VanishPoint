@@ -44,6 +44,13 @@ export const Radius = {
   pill: 999,
 } as const;
 
+/** Phone-width content column — keeps the web preview from stretching. */
+export const contentColumn = {
+  width: '100%' as const,
+  maxWidth: 480,
+  alignSelf: 'center' as const,
+};
+
 export const Font = {
   display: 'Geist_600SemiBold',
   body: 'Geist_400Regular',
