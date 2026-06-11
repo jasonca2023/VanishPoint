@@ -1,4 +1,4 @@
-# ◌ VanishPoint
+# VanishPoint
 
 A mobile privacy assistant that finds forgotten digital footprints ("Ghost Accounts")
 and helps you reclaim your data through guided, **permission-based** deletion.
@@ -8,7 +8,7 @@ it never deletes anything without your explicit, biometric-gated confirmation.
 
 ## Features
 
-### 🔍 Smart Discovery (the Scout)
+### Smart Discovery (the Scout)
 The Scan button talks to a real AI agent (`scout/`): a local service that walks your inbox
 over IMAP — sender, subject, and date headers only, never message bodies — and classifies
 every message with a **fine-tuned Hugging Face transformer** into footprint signals
@@ -18,7 +18,7 @@ flagged with a risk score; newsletters, personal mail, and recently active servi
 do. The agent runs on your own machine, so mail metadata never leaves it. When the agent
 is unreachable the app falls back to bundled demo data and says so on the dashboard.
 
-### 🔔 Ask-First reminders
+### Ask-First reminders
 When a ghost is detected you get a push notification — *"You haven't used your 'vimeo.com'
 account since Oct 2022. It contains your old profile data. Would you like VanishPoint to
 delete it for you?"* — with three actions right on the notification:
@@ -27,14 +27,14 @@ delete it for you?"* — with three actions right on the notification:
 - **Keep** — whitelists the account for 12 months
 - **Remind Me Later** — snoozes for 30 days
 
-### 💨 The Vanish flow
+### The Vanish flow
 Open the account, review the Scout's evidence (the email headers it based its call on),
 and **swipe right to Vanish**. A FaceID/TouchID check confirms it's really you, then
 VanishPoint generates a pre-filled **GDPR Article 17 / CCPA §1798.105** deletion request
 you can send to the service's privacy officer in one tap, or finalize in the in-app
 browser on the service's own privacy portal. Mark it done and watch your footprint shrink.
 
-### 🔐 Accounts & security
+### Accounts & security
 - **Sign up / sign in with Supabase Auth** (email + password, confirmation emails included) —
   identity lives in the cloud, your data doesn't
 - Ghost-account list stored encrypted in the **iOS Keychain / Android Keystore**, namespaced
@@ -43,7 +43,7 @@ browser on the service's own privacy portal. Mark it done and watch your footpri
 - Biometric authentication required before any Vanish action
 - All analysis, storage, and decision history stay on the phone
 
-### 📊 Built-in metrics
+### Built-in metrics
 Settings shows how well the Scout is doing: **Permission Rate** (how often you accept its
 suggestions), **Vanish Rate** (ghosts deleted), and a **Safety Score** that drops if it
 ever flags an account you still use — tap *"I still use this account"* to teach it.
