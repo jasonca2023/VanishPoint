@@ -17,47 +17,56 @@ import { Wordmark } from '@/components/wordmark';
 import { Color, Font, Radius, Space, Type, contentColumn, labelStyle } from '@/constants/theme';
 import { useVaultStore } from '@/store/use-vault-store';
 
-type Mode = 'signin' | 'signup';
-
+/**
+ * Passwordless: Supabase emails a six-digit code, the code becomes the
+ * session. First-time addresses get an account automatically, so there is
+ * no separate sign-up path.
+ */
 export default function Auth() {
-  const [mode, setMode] = useState<Mode>('signin');
+  const [stage, setStage] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const signIn = useVaultStore((s) => s.signIn);
-  const signUp = useVaultStore((s) => s.signUp);
+  const requestCode = useVaultStore((s) => s.requestCode);
+  const verifyCode = useVaultStore((s) => s.verifyCode);
 
-  const submit = async () => {
+  const sendCode = async () => {
     setError(null);
     setNotice(null);
-    if (!email.trim() || password.length < 6) {
-      setError('Enter your email and a password of at least 6 characters.');
+    if (!email.trim().includes('@')) {
+      setError('Enter the email address you want VanishPoint to watch.');
       return;
     }
     setBusy(true);
     try {
-      if (mode === 'signin') {
-        const { error: err } = await signIn(email.trim(), password);
-        if (err) {
-          setError(err);
-          return;
-        }
-        router.replace('/');
-      } else {
-        const { error: err, needsConfirm } = await signUp(email.trim(), password);
-        if (err) {
-          setError(err);
-          return;
-        }
-        if (needsConfirm) {
-          setNotice('Almost there — confirm the link we just emailed you, then sign in.');
-          setMode('signin');
-        } else {
-          router.replace('/');
-        }
+      const { error: err } = await requestCode(email.trim());
+      if (err) {
+        setError(err);
+        return;
       }
+      setStage('code');
+      setNotice(`Code sent to ${email.trim()} — it’s valid for about an hour.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitCode = async () => {
+    setError(null);
+    if (code.trim().length < 6) {
+      setError('The code is six digits.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: err } = await verifyCode(email.trim(), code.trim());
+      if (err) {
+        setError(err);
+        return;
+      }
+      router.replace('/');
     } finally {
       setBusy(false);
     }
@@ -82,49 +91,64 @@ export default function Auth() {
             </Text>
           </View>
 
-          <View style={styles.form}>
-            <Text style={labelStyle}>{mode === 'signin' ? 'sign in' : 'create account'}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="email"
-              placeholderTextColor={Color.neutral}
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="password"
-              placeholderTextColor={Color.neutral}
-              secureTextEntry
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              value={password}
-              onChangeText={setPassword}
-              onSubmitEditing={submit}
-            />
-
-            {error && <Text style={styles.error}>{error}</Text>}
-            {notice && <Text style={styles.notice}>{notice}</Text>}
-
-            <Button
-              label={mode === 'signin' ? 'Sign in' : 'Create account'}
-              onPress={submit}
-              loading={busy}
-            />
-            <Pressable
-              onPress={() => {
-                setMode(mode === 'signin' ? 'signup' : 'signin');
-                setError(null);
-              }}
-              style={{ alignSelf: 'center', padding: Space.sm }}
-            >
-              <Text style={styles.switch}>
-                {mode === 'signin' ? 'New here? Create an account' : 'Have an account? Sign in'}
+          {stage === 'email' ? (
+            <View style={styles.form}>
+              <Text style={labelStyle}>sign in</Text>
+              <Text style={styles.formHint}>
+                No password. We email a one-time code to the inbox the scout will search —
+                new addresses get an account automatically.
               </Text>
-            </Pressable>
-          </View>
+              <TextInput
+                style={styles.input}
+                placeholder="email"
+                placeholderTextColor={Color.neutral}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                onSubmitEditing={sendCode}
+              />
+              {error && <Text style={styles.error}>{error}</Text>}
+              <Button label="Email me a code" onPress={sendCode} loading={busy} />
+            </View>
+          ) : (
+            <View style={styles.form}>
+              <Text style={labelStyle}>enter the code</Text>
+              <Text style={styles.emailLine}>{email.trim()}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="six-digit code"
+                placeholderTextColor={Color.neutral}
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChangeText={setCode}
+                onSubmitEditing={submitCode}
+                autoFocus
+              />
+              {error && <Text style={styles.error}>{error}</Text>}
+              {notice && !error && <Text style={styles.notice}>{notice}</Text>}
+              <Button label="Verify and continue" onPress={submitCode} loading={busy} />
+              <View style={styles.linksRow}>
+                <Pressable onPress={sendCode} style={{ padding: Space.sm }}>
+                  <Text style={styles.switch}>Resend code</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setStage('email');
+                    setCode('');
+                    setError(null);
+                    setNotice(null);
+                  }}
+                  style={{ padding: Space.sm }}
+                >
+                  <Text style={styles.switch}>Use a different address</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           <Text style={styles.fineprint}>
             Your account is identity only. Everything VanishPoint learns about your footprint
@@ -161,6 +185,13 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   form: { gap: Space.md },
+  formHint: {
+    fontFamily: Font.body,
+    fontSize: Type.sm,
+    lineHeight: Type.sm * 1.5,
+    color: Color.neutral,
+  },
+  emailLine: { fontFamily: Font.mono, fontSize: Type.sm, color: Color.ink2 },
   input: {
     backgroundColor: Color.paper2,
     borderRadius: Radius.control,
@@ -172,6 +203,7 @@ const styles = StyleSheet.create({
   },
   error: { fontFamily: Font.body, fontSize: Type.sm, color: Color.accent },
   notice: { fontFamily: Font.body, fontSize: Type.sm, color: Color.ink2 },
+  linksRow: { flexDirection: 'row', justifyContent: 'center', gap: Space.lg },
   switch: {
     fontFamily: Font.body,
     fontSize: Type.sm,

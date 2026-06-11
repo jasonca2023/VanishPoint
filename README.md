@@ -9,7 +9,9 @@ it never deletes anything without your explicit, biometric-gated confirmation.
 ## Features
 
 ### Accounts
-Sign up / sign in with **Supabase Auth** (email + password, confirmation emails included).
+Sign-in is passwordless: enter your email and **Supabase Auth** sends a one-time six-digit
+code to your inbox — typing it in signs you in, and first-time addresses get an account
+automatically. No password to invent, reuse, or leak.
 Identity is the only thing that lives in the cloud: each user's ghost list, decisions,
 settings, and mail credential are stored encrypted in the **iOS Keychain / Android
 Keystore**, namespaced per user — a shared phone never leaks one person's ghosts to

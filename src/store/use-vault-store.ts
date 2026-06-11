@@ -47,8 +47,10 @@ interface VaultState {
   mailCreds: MailCredentials | null;
 
   initAuth: () => Promise<void>;
-  signUp: (email: string, password: string) => Promise<{ error?: string; needsConfirm?: boolean }>;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
+  /** Email a one-time sign-in code; creates the account on first use. */
+  requestCode: (email: string) => Promise<{ error?: string }>;
+  /** Trade the emailed code for a session. */
+  verifyCode: (email: string, code: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 
   /** Save (or clear) the inbox credential in the secure vault. */
@@ -123,16 +125,27 @@ export const useVaultStore = create<VaultState>((set, get) => {
       });
     },
 
-    signUp: async (email, password) => {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return { error: error.message };
-      // Email confirmation enabled: no session until the link is clicked.
-      return { needsConfirm: !data.session };
+    requestCode: async (email) => {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true },
+      });
+      if (!error) return {};
+      return {
+        error: error.message.includes('rate limit')
+          ? 'Too many codes requested for this address — give it a few minutes and try again.'
+          : error.message,
+      };
     },
 
-    signIn: async (email, password) => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return error ? { error: error.message } : {};
+    verifyCode: async (email, code) => {
+      const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' });
+      if (!error) return {};
+      return {
+        error: error.message.includes('expired')
+          ? 'That code is wrong or has expired — request a fresh one.'
+          : error.message,
+      };
     },
 
     signOut: async () => {
